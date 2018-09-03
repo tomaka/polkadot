@@ -18,6 +18,7 @@ use libp2p::{self, Transport, mplex, secio, yamux};
 use libp2p::core::{MuxedTransport, either, upgrade};
 use libp2p::transport_timeout::TransportTimeout;
 use std::time::Duration;
+use std::usize;
 use tokio_io::{AsyncRead, AsyncWrite};
 
 /// Builds the transport that serves as a common ground for all connections.
@@ -25,6 +26,10 @@ pub fn build_transport(
 	unencrypted_allowed: UnencryptedAllowed,
 	local_private_key: secio::SecioKeyPair
 ) -> impl MuxedTransport<Output = impl AsyncRead + AsyncWrite> + Clone {
+	let mut mplex_config = mplex::MplexConfig::new();
+	mplex_config.max_buffer_len_behaviour(mplex::MaxBufferBehaviour::Block);
+	mplex_config.max_buffer_len(usize::MAX);
+
 	let base = libp2p::CommonTransport::new()
 		.with_upgrade({
 			let secio = secio::SecioConfig {
@@ -52,7 +57,7 @@ pub fn build_transport(
 		.map(|(socket, _key), _| socket)
 		// TODO: this `EitherOutput` thing shows that libp2p's API could be improved
 		.with_upgrade(upgrade::or(
-			upgrade::map(mplex::MplexConfig::new(), either::EitherOutput::First),
+			upgrade::map(mplex_config, either::EitherOutput::First),
 			upgrade::map(yamux::Config::default(), either::EitherOutput::Second),
 		))
 		.map(|out, _| ((), out))

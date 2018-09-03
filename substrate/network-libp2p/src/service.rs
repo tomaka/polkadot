@@ -110,7 +110,7 @@ impl NetworkService {
 		let local_peer_id = network_state.local_public_key().clone()
 			.into_peer_id();
 		for mut addr in config.listen_addresses.iter().cloned() {
-			addr.append(AddrComponent::P2P(local_peer_id.clone().into_bytes()));
+			addr.append(AddrComponent::P2P(local_peer_id.clone().into()));
 			info!(target: "sub-libp2p", "Local node address is: {}", addr);
 		}
 
@@ -1103,7 +1103,7 @@ fn open_peer_custom_proto<T, To, St, C>(
 	let proto_id = proto.id();
 	let node_id = expected_peer_id.clone();
 	let shared2 = shared.clone();
-	let addr: Multiaddr = AddrComponent::P2P(expected_peer_id.clone().into_bytes()).into();
+	let addr: Multiaddr = AddrComponent::P2P(expected_peer_id.clone().into()).into();
 
 	// TODO: check that the secio key matches the id given by kademlia
 	let with_proto = base_transport
@@ -1183,7 +1183,7 @@ fn obtain_kad_connection<T, To, St, C>(shared: Arc<Shared>,
 		St: MuxedTransport<Output = FinalUpgrade<C>> + Clone + 'static,
 		C: 'static {
 	let kad_upgrade = shared.kad_upgrade.clone();
-	let addr: Multiaddr = AddrComponent::P2P(who.clone().into_bytes()).into();
+	let addr: Multiaddr = AddrComponent::P2P(who.clone().into()).into();
 	let transport = transport
 		.and_then(move |out, endpoint, client_addr|
 			upgrade::apply(out.socket, kad_upgrade.clone(),
@@ -1236,7 +1236,7 @@ fn process_identify_info(
 				);
 				listened_addrs.push(ext_addr.clone());
 				ext_addr.append(AddrComponent::P2P(shared.kad_system
-					.local_peer_id().clone().into_bytes()));
+					.local_peer_id().clone().into()));
 				info!(target: "sub-libp2p", "New external node address: {}", ext_addr);
 			}
 		}
@@ -1302,7 +1302,7 @@ fn ping_all<T, St, C>(
 	for (peer, who, pinger) in shared.network_state.cleanup_and_prepare_ping() {
 		let shared = shared.clone();
 
-		let addr = Multiaddr::from(AddrComponent::P2P(who.clone().into_bytes()));
+		let addr = Multiaddr::from(AddrComponent::P2P(who.clone().into()));
 		let fut = pinger
 			.dial(&swarm_controller, &addr, transport.clone())
 			.and_then(move |mut p| {
@@ -1360,7 +1360,7 @@ fn p2p_multiaddr_to_node_id(client_addr: Multiaddr) -> PeerstorePeerId {
 	}
 	match (first, second) {
 		(Some(AddrComponent::P2P(node_id)), None) =>
-			PeerstorePeerId::from_bytes(node_id).expect("libp2p always reports a valid node id"),
+			PeerstorePeerId::from_multihash(node_id).expect("libp2p always reports a valid node id"),
 		_ => panic!("Reported multiaddress is in the wrong format ; programmer error")
 	}
 }
