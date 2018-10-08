@@ -20,13 +20,13 @@ use fnv::FnvHashMap;
 use futures::{prelude::*, Stream};
 use libp2p::{Multiaddr, multiaddr::Protocol, PeerId};
 use libp2p::core::{muxing, Endpoint, PublicKey};
-use libp2p::core::nodes::node::Substream;
-use libp2p::core::nodes::swarm::{ConnectedPoint, Swarm as Libp2pSwarm, HandlerFactory};
-use libp2p::core::nodes::swarm::{SwarmEvent as Libp2pSwarmEvent, Peer as SwarmPeer};
+use libp2p::core::nodes::{NodeHandlerWrapper, Substream};
+use libp2p::core::nodes::{ConnectedPoint, RawSwarm as Libp2pRawSwarm, HandlerFactory};
+use libp2p::core::nodes::{RawSwarmEvent as Libp2pRawSwarmEvent, Peer as SwarmPeer};
 use libp2p::core::transport::boxed::Boxed;
 use libp2p::kad::{KadConnecController, KadFindNodeRespond};
 use libp2p::secio;
-use node_handler::{SubstrateOutEvent, SubstrateNodeHandler, SubstrateInEvent, IdentificationRequest};
+use node_handler::{SubstrateProtocolsHandler, SubstrateOutEvent};
 use std::io::{Error as IoError, ErrorKind as IoErrorKind};
 use std::{mem, sync::Arc};
 use transport;
@@ -47,7 +47,7 @@ pub fn start_swarm(
 	let transport = transport::build_transport(local_private_key);
 
 	// Build the underlying libp2p swarm.
-	let swarm = Libp2pSwarm::with_handler_builder(transport, HandlerBuilder(Arc::new(registered_custom)));
+	let swarm = Libp2pRawSwarm::with_handler_builder(transport, HandlerBuilder(Arc::new(registered_custom)));
 
 	Ok(Swarm {
 		swarm,
@@ -66,7 +66,7 @@ pub fn start_swarm(
 struct HandlerBuilder(Arc<RegisteredProtocols>);
 impl HandlerFactory for HandlerBuilder
 {
-	type Handler = SubstrateNodeHandler<Substream<Muxer>>;
+	type Handler = NodeHandlerWrapper<SubstrateProtocolsHandler<Substream<Muxer>>>;
 
 	#[inline]
 	fn new_handler(&self, addr: ConnectedPoint) -> Self::Handler {
@@ -204,7 +204,7 @@ pub enum SwarmEvent {
 /// Network swarm. Must be polled regularly in order for the networking to work.
 pub struct Swarm {
 	/// Stream of events of the swarm.
-	swarm: Libp2pSwarm<
+	swarm: Libp2pRawSwarm<
 		Boxed<(PeerId, Muxer)>,
 		SubstrateInEvent,
 		SubstrateOutEvent<Substream<Muxer>>,
@@ -487,10 +487,10 @@ impl Swarm {
 	/// > shouldn't be made public because of this requirement.
 	fn process_network_event(
 		&mut self,
-		event: Libp2pSwarmEvent<Boxed<(PeerId, Muxer)>, SubstrateOutEvent<Substream<Muxer>>>
+		event: Libp2pRawSwarmEvent<Boxed<(PeerId, Muxer)>, SubstrateOutEvent<Substream<Muxer>>>
 	) -> Option<SwarmEvent> {
 		match event {
-			Libp2pSwarmEvent::Connected { peer_id, endpoint } => {
+			Libp2pRawSwarmEvent::Connected { peer_id, endpoint } => {
 				let node_index = self.next_node_index.clone();
 				self.next_node_index += 1;
 				self.node_by_peer.insert(peer_id.clone(), node_index);
@@ -509,7 +509,7 @@ impl Swarm {
 					endpoint
 				});
 			}
-			Libp2pSwarmEvent::Replaced { peer_id, endpoint, .. } => {
+			Libp2pRawSwarmEvent::Replaced { peer_id, endpoint, .. } => {
 				let node_index = *self.node_by_peer.get(&peer_id)
 					.expect("node_by_peer is always kept in sync with the inner swarm");
 				let infos = self.nodes_info.get_mut(&node_index)
@@ -527,7 +527,7 @@ impl Swarm {
 					closed_custom_protocols,
 				});
 			},
-			Libp2pSwarmEvent::NodeClosed { peer_id, .. } => {
+			Libp2pRawSwarmEvent::NodeClosed { peer_id, .. } => {
 				debug!(target: "sub-libp2p", "Connection to {:?} closed gracefully", peer_id);
 				let node_index = self.node_by_peer.remove(&peer_id)
 					.expect("node_by_peer is always kept in sync with the inner swarm");
@@ -540,7 +540,7 @@ impl Swarm {
 					closed_custom_protocols: infos.open_protocols,
 				});
 			},
-			Libp2pSwarmEvent::NodeError { peer_id, error, .. } => {
+			Libp2pRawSwarmEvent::NodeError { peer_id, error, .. } => {
 				debug!(target: "sub-libp2p", "Closing {:?} because of error: {:?}", peer_id, error);
 				let node_index = self.node_by_peer.remove(&peer_id)
 					.expect("node_by_peer is always kept in sync with the inner swarm");
@@ -553,17 +553,17 @@ impl Swarm {
 					closed_custom_protocols: infos.open_protocols,
 				});
 			},
-			Libp2pSwarmEvent::DialError { multiaddr, error, .. } =>
+			Libp2pRawSwarmEvent::DialError { multiaddr, error, .. } =>
 				return Some(SwarmEvent::DialFail {
 					address: multiaddr,
 					error,
 				}),
-			Libp2pSwarmEvent::UnknownPeerDialError { multiaddr, error } =>
+			Libp2pRawSwarmEvent::UnknownPeerDialError { multiaddr, error } =>
 				return Some(SwarmEvent::DialFail {
 					address: multiaddr,
 					error,
 				}),
-			Libp2pSwarmEvent::PublicKeyMismatch {
+			Libp2pRawSwarmEvent::PublicKeyMismatch {
 				actual_peer_id,
 				multiaddr,
 				expected_peer_id,
@@ -576,20 +576,20 @@ impl Swarm {
 					error: IoError::new(IoErrorKind::Other, "Public key mismatch"),
 				});
 			},
-			Libp2pSwarmEvent::ListenerClosed { listen_addr, result, .. } => {
+			Libp2pRawSwarmEvent::ListenerClosed { listen_addr, result, .. } => {
 				warn!(target: "sub-libp2p", "Listener closed for {}: {:?}", listen_addr, result);
 				if self.swarm.listeners().count() == 0 {
 					warn!(target: "sub-libp2p", "No listener left");
 				}
 			},
-			Libp2pSwarmEvent::NodeEvent { peer_id, event } =>
+			Libp2pRawSwarmEvent::NodeEvent { peer_id, event } =>
 				if let Some(event) = self.handle_node_event(peer_id, event) {
 					return Some(event);
 				},
-			Libp2pSwarmEvent::IncomingConnection { listen_addr, send_back_addr } =>
+			Libp2pRawSwarmEvent::IncomingConnection { listen_addr, send_back_addr } =>
 				trace!(target: "sub-libp2p", "Incoming connection with {} on listener {}",
 					send_back_addr, listen_addr),
-			Libp2pSwarmEvent::IncomingConnectionError { listen_addr, send_back_addr, error } =>
+			Libp2pRawSwarmEvent::IncomingConnectionError { listen_addr, send_back_addr, error } =>
 				trace!(target: "sub-libp2p", "Incoming connection with {} on listener {} \
 					errored: {:?}", send_back_addr, listen_addr, error),
 		}
