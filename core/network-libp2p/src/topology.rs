@@ -16,9 +16,9 @@
 
 use fnv::FnvHashMap;
 use parking_lot::Mutex;
-use libp2p::{Multiaddr, PeerId};
+use libp2p::{Multiaddr, PeerId, kad::KademliaTopology, multihash::Multihash};
 use serde_json;
-use std::{cmp, fs};
+use std::{cmp, fs, iter, vec};
 use std::io::{Read, Cursor, Error as IoError, ErrorKind as IoErrorKind, Write, BufReader, BufWriter};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
@@ -258,24 +258,6 @@ impl NetTopology {
 		self.add_discovered_addrs(peer_id, addrs.map(|a| (a, true)))
 	}
 
-	/// Adds addresses discovered through the Kademlia DHT.
-	///
-	/// The addresses are not necessarily valid and should expire after a TTL.
-	///
-	/// For each address, incorporates a boolean. If true, that means we have some sort of hint
-	/// that this address can be reached.
-	///
-	/// Returns `true` if the topology has changed in some way. Returns `false` if calling this
-	/// method was a no-op.
-	#[inline]
-	pub fn add_kademlia_discovered_addrs<I>(
-		&mut self,
-		peer_id: &PeerId,
-		addrs: I,
-	) -> bool
-		where I: Iterator<Item = (Multiaddr, bool)> {
-		self.add_discovered_addrs(peer_id, addrs)
-	}
 
 	/// Inner implementaiton of the `add_*_discovered_addrs` methods.
 	/// Returns `true` if the topology has changed in some way. Returns `false` if calling this
@@ -449,6 +431,30 @@ impl NetTopology {
 				}
 			}
 		}
+	}
+}
+
+impl KademliaTopology for NetTopology {
+	type ClosestPeersIter = vec::IntoIter<PeerId>;
+	type GetProvidersIter = iter::Empty<PeerId>;
+
+	fn add_kad_discovered_address(&mut self, peer: &PeerId, addr: Multiaddr) {
+		// TODO: correct bool
+		self.add_discovered_addrs(peer, iter::once((addr, false)));
+	}
+
+	fn closest_peers(&mut self, target: &Multihash, max: usize) -> Self::ClosestPeersIter {
+		// TODO:
+		unimplemented!()
+	}
+
+	fn add_provider(&mut self, _: Multihash, _: PeerId) {
+		// We don't implement ADD_PROVIDER/GET_PROVIDERS
+	}
+
+	fn get_providers(&mut self, _: &Multihash) -> Self::GetProvidersIter {
+		// We don't implement ADD_PROVIDER/GET_PROVIDERS
+		iter::empty()
 	}
 }
 
