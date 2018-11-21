@@ -18,7 +18,7 @@ use bytes::Bytes;
 use libp2p::core::{UpgradeInfo, InboundUpgrade, OutboundUpgrade};
 use libp2p::tokio_codec::Framed;
 use std::{collections::VecDeque, io, vec::IntoIter as VecIntoIter};
-use futures::{prelude::*, future, stream, task};
+use futures::{prelude::*, future, stream};
 use tokio_io::{AsyncRead, AsyncWrite};
 use unsigned_varint::codec::UviBytes;
 use ProtocolId;
@@ -80,8 +80,6 @@ pub struct RegisteredProtocolSubstream<TSubstream> {
 	protocol_id: ProtocolId,
 	/// Version of the protocol that was negotiated.
 	protocol_version: u8,
-	/// Task to notify when something is changed and we need to be polled.
-	to_notify: Option<task::Task>,
 }
 
 impl<TSubstream> RegisteredProtocolSubstream<TSubstream> {
@@ -105,9 +103,6 @@ impl<TSubstream> RegisteredProtocolSubstream<TSubstream> {
 	/// After calling this, the stream is guaranteed to finish soon-ish.
 	pub fn shutdown(&mut self) {
 		self.is_closing = true;
-		if let Some(task) = self.to_notify.take() {
-			task.notify();
-		}
 	}
 
 	/// Sends a message to the substream.
@@ -118,10 +113,6 @@ impl<TSubstream> RegisteredProtocolSubstream<TSubstream> {
 		if self.send_queue.len() >= 2048 {
 			warn!(target: "sub-libp2p", "Queue of packets to send over substream is pretty \
 				large: {}", self.send_queue.len());
-		}
-
-		if let Some(task) = self.to_notify.take() {
-			task.notify();
 		}
 	}
 }
@@ -172,7 +163,6 @@ where TSubstream: AsyncRead + AsyncWrite,
 			}
 		}
 
-		self.to_notify = Some(task::current());
 		Ok(Async::NotReady)
 	}
 }
@@ -214,7 +204,6 @@ where TSubstream: AsyncRead + AsyncWrite,
 			inner: framed.fuse(),
 			protocol_id: self.id,
 			protocol_version,
-			to_notify: None,
 		})
 	}
 }
