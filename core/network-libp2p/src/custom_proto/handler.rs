@@ -27,10 +27,7 @@ use std::{fmt, io};
 use tokio_io::{AsyncRead, AsyncWrite};
 
 /// Protocol handler that tries to maintain one substream per registered custom protocol.
-pub struct CustomProtosHandler<TSubstream>
-where
-	TSubstream: AsyncRead + AsyncWrite,
-{
+pub struct CustomProtosHandler<TSubstream> {
 	/// List of all the protocols we support.
 	protocols: RegisteredProtocols,
 

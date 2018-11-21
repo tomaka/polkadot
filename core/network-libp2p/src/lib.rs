@@ -42,6 +42,7 @@ extern crate log;
 #[cfg(test)] #[macro_use]
 extern crate assert_matches;
 
+mod behaviour;
 mod custom_proto;
 mod error;
 mod secret;
