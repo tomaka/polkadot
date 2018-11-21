@@ -44,7 +44,6 @@ extern crate assert_matches;
 
 mod custom_proto;
 mod error;
-mod node_handler;
 mod secret;
 mod service_task;
 mod swarm;
