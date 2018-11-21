@@ -57,10 +57,6 @@ pub enum CustomProtosHandlerIn {
 /// Event that can be emitted by a `CustomProtosHandler`.
 #[derive(Debug)]
 pub enum CustomProtosHandlerOut {
-	/// The node works but we can't do anything useful with it because it doesn't support any
-	/// custom protocol.
-	Useless,
-
 	/// Opened a custom protocol with the remote.
 	CustomProtocolOpen {
 		/// Identifier of the protocol.
@@ -181,7 +177,12 @@ where
 	fn inject_inbound_closed(&mut self) {}
 
 	#[inline]
-	fn inject_dial_upgrade_error(&mut self, _: Self::OutboundOpenInfo, _: io::Error) {}
+	fn inject_dial_upgrade_error(&mut self, _: Self::OutboundOpenInfo, _: io::Error) {
+		// Right now if the remote doesn't support one of the custom protocols, we shut down the
+		// entire connection. This is a hack-ish solution to the problem where we connect to nodes
+		// that support libp2p but not the testnet that we want.
+		self.shutdown();
+	}
 
 	fn shutdown(&mut self) {
 		self.shutting_down = true;

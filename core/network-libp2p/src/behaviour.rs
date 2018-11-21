@@ -14,7 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
+use crate::connec_limit::ConnecLimitBehaviour;
 use crate::custom_proto::{CustomProtosBehaviour, RegisteredProtocols};
+use crate::NetworkConfiguration;
 use libp2p::core::PeerId;
 use libp2p::identify::{PeriodicIdentification, IdentifyListen, IdentifyInfo};
 use libp2p::kad::Kademlia;
@@ -27,6 +29,8 @@ pub struct Behaviour<TSubstream> {
     periodic_ping: PeriodicPingHandler<TSubstream>,
     /// Respond to incoming pings.
     ping_listen: PingListenHandler<TSubstream>,
+    /// Enforces disabled and reserved peers, and connection limit.
+    limiter: ConnecLimitBehaviour<TSubstream>,
     /// Custom protocols (dot, bbq, sub, etc.).
     custom_protocols: CustomProtosBehaviour<TSubstream>,
     /// Kademlia requests and answers.
@@ -39,7 +43,8 @@ pub struct Behaviour<TSubstream> {
 
 impl<TSubstream> Behaviour<TSubstream> {
     /// Builds a new `Behaviour`.
-    pub fn new(local_peer_id: PeerId, protocols: RegisteredProtocols) -> Self {
+    // TODO: redundancy between config and local_peer_id
+    pub fn new(config: &NetworkConfiguration, local_peer_id: PeerId, protocols: RegisteredProtocols) -> Self {
         // TODO:
         /*let id_info = IdentifyInfo {
 
@@ -48,6 +53,7 @@ impl<TSubstream> Behaviour<TSubstream> {
         Behaviour {
             periodic_ping: PeriodicPingHandler::new(),
             ping_listen: PingListenHandler::new(),
+            limiter: ConnecLimitBehaviour::new(config),
             custom_protocols: CustomProtosBehaviour::new(protocols),
             kademlia: Kademlia::new(local_peer_id),
             periodic_identify: PeriodicIdentification::new(),

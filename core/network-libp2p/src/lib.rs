@@ -32,6 +32,7 @@ extern crate rand;
 extern crate serde_derive;
 extern crate serde_json;
 extern crate smallvec;
+extern crate void;
 extern crate bytes;
 extern crate unsigned_varint;
 
@@ -43,6 +44,7 @@ extern crate log;
 extern crate assert_matches;
 
 mod behaviour;
+mod connec_limit;
 mod custom_proto;
 mod error;
 mod secret;
