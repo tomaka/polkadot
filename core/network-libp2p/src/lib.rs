@@ -31,6 +31,7 @@ extern crate rand;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
+extern crate smallvec;
 extern crate bytes;
 extern crate unsigned_varint;
 
