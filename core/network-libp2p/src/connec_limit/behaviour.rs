@@ -14,7 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
-use crate::{NetworkConfiguration, NonReservedPeerMode, connec_limit::handler::ConnecLimitHandler};
+use crate::{NetworkConfiguration, NonReservedPeerMode};
+use crate::connec_limit::handler::ConnecLimitHandler;
+use crate::topology::DisconnectReason;
 use fnv::{FnvHashMap, FnvHashSet};
 use futures::prelude::*;
 use libp2p::core::nodes::{ConnectedPoint, NetworkBehaviour, NetworkBehaviourAction};
@@ -23,6 +25,9 @@ use std::{marker::PhantomData, time::Duration, time::Instant};
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_timer::Delay;
 use void::Void;
+
+// Duration during which a peer is disabled.
+const PEER_DISABLE_DURATION: Duration = Duration::from_secs(5 * 60);
 
 /// Network behaviour that handles opening substreams for custom protocols with other nodes.
 // TODO: does it need a generic?
@@ -115,6 +120,44 @@ impl<TSubstream> ConnecLimitBehaviour<TSubstream> {
 		}
 
 		to_disconnect*/
+	}
+
+	/// Disconnects a peer and bans it for a little while.
+	///
+	/// Same as `drop_node`, except that the same peer will not be able to reconnect later.
+	#[inline]
+	pub fn ban_node(&mut self, peer_id: PeerId) {
+		self.drop_node_inner(peer_id, DisconnectReason::Banned, Some(PEER_DISABLE_DURATION));
+	}
+
+	/// Disconnects a peer.
+	///
+	/// This is asynchronous and will not immediately close the peer.
+	/// Corresponding closing events will be generated once the closing actually happens.
+	#[inline]
+	pub fn drop_node(&mut self, peer_id: &PeerId) {
+		self.drop_node_inner(peer_id, DisconnectReason::Useless, None);
+	}
+
+	/// Common implementation of `drop_node` and `ban_node`.
+	fn drop_node_inner(
+		&mut self,
+		peer_id: &PeerId,
+		reason: DisconnectReason,
+		disable_duration: Option<Duration>
+	) {
+		// Kill the node from the swarm, and inject an event about it.
+		// TODO: actually do that
+		if let Some(ConnectedPoint::Dialer { address }) = self.nodes_addresses.remove(&node_index) {
+			self.topology.report_disconnected(&address, reason);
+		}
+
+		if let Some(disable_duration) = disable_duration {
+			let timeout = Instant::now() + disable_duration;
+			self.disabled_peers.insert(peer_id, timeout);
+		}
+
+		self.connect_to_nodes();
 	}
 }
 

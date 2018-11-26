@@ -16,7 +16,7 @@
 
 use fnv::FnvHashMap;
 use parking_lot::Mutex;
-use libp2p::{Multiaddr, PeerId, kad::KademliaTopology, multihash::Multihash};
+use libp2p::{Multiaddr, PeerId, core::topology::Topology, kad::KademliaTopology, multihash::Multihash};
 use serde_json;
 use std::{cmp, fs, iter, vec};
 use std::io::{Read, Cursor, Error as IoError, ErrorKind as IoErrorKind, Write, BufReader, BufWriter};
@@ -455,6 +455,22 @@ impl KademliaTopology for NetTopology {
 	fn get_providers(&mut self, _: &Multihash) -> Self::GetProvidersIter {
 		// We don't implement ADD_PROVIDER/GET_PROVIDERS
 		iter::empty()
+	}
+}
+
+// TODO: is that a good idea?
+impl Topology for NetTopology {
+	fn add_discovered_address(&mut self, peer: &PeerId, addr: Multiaddr) {
+		unimplemented!()		// TODO:
+	}
+
+	#[inline]
+	fn addresses_of_peer(&mut self, peer: &PeerId) -> Vec<Multiaddr> {
+		self.addrs_of_peer(peer).map(|(a, _)| a).collect()
+	}
+
+	fn peers(&self) -> Vec<PeerId> {
+		unimplemented!()		// TODO:
 	}
 }
 

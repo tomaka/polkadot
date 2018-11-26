@@ -21,75 +21,90 @@ use bytes::Bytes;
 use futures::prelude::*;
 use libp2p::core::nodes::{ConnectedPoint, NetworkBehaviour, NetworkBehaviourAction};
 use libp2p::core::{protocols_handler::ProtocolsHandler, PeerId};
+use smallvec::SmallVec;
 use std::marker::PhantomData;
 use tokio_io::{AsyncRead, AsyncWrite};
 
 /// Network behaviour that handles opening substreams for custom protocols with other nodes.
 pub struct CustomProtosBehaviour<TSubstream> {
-    /// List of protocols to open with peers. Never modified.
-    protocols: RegisteredProtocols,
+	/// List of protocols to open with peers. Never modified.
+	protocols: RegisteredProtocols,
 
-    /// Marker to pin the generics.
-    marker: PhantomData<TSubstream>,
+	/// Events to produce from `poll()`.
+	events: SmallVec<[NetworkBehaviourAction<CustomProtosHandlerIn, (PeerId, CustomProtosHandlerOut)>; 4]>,
+
+	/// Marker to pin the generics.
+	marker: PhantomData<TSubstream>,
 }
 
 impl<TSubstream> CustomProtosBehaviour<TSubstream> {
-    /// Creates a `CustomProtosBehaviour`.
-    pub fn new(protocols: RegisteredProtocols) -> Self {
-        CustomProtosBehaviour {
-            protocols,
-            marker: PhantomData,
-        }
-    }
+	/// Creates a `CustomProtosBehaviour`.
+	pub fn new(protocols: RegisteredProtocols) -> Self {
+		CustomProtosBehaviour {
+			protocols,
+			events: SmallVec::new(),
+			marker: PhantomData,
+		}
+	}
 }
 
 impl<TSubstream> CustomProtosBehaviour<TSubstream>
 where
-    TSubstream: AsyncRead + AsyncWrite,
+	TSubstream: AsyncRead + AsyncWrite,
 {
 	/// Sends a message to a peer using the given custom protocol.
-    ///
-    /// Has no effect if the custom protocol is not open with the given peer.
-    ///
-    /// Also note that even we have a valid open substream, it may in fact be already closed
-    /// without us knowing, in which case the packet will not be received.
-    pub fn send_packet(&mut self, target: &PeerId, protocol_id: ProtocolId, data: impl Into<Bytes>) {
-        unimplemented!()
-    }
+	///
+	/// Has no effect if the custom protocol is not open with the given peer.
+	///
+	/// Also note that even we have a valid open substream, it may in fact be already closed
+	/// without us knowing, in which case the packet will not be received.
+	pub fn send_packet(&mut self, target: &PeerId, protocol_id: ProtocolId, data: impl Into<Bytes>) {
+		self.events.push(NetworkBehaviourAction::SendEvent {
+			peer_id: target.clone(),
+			event: CustomProtosHandlerIn::SendCustomMessage {
+				protocol: protocol_id,
+				data: data.into(),
+			}
+		});
+	}
 }
 
 impl<TSubstream, TTopology> NetworkBehaviour<TTopology> for CustomProtosBehaviour<TSubstream>
 where
-    TSubstream: AsyncRead + AsyncWrite,
+	TSubstream: AsyncRead + AsyncWrite,
 {
-    type ProtocolsHandler = CustomProtosHandler<TSubstream>;
-    type OutEvent = CustomProtosHandlerOut;
+	type ProtocolsHandler = CustomProtosHandler<TSubstream>;
+	type OutEvent = (PeerId, CustomProtosHandlerOut);
 
-    fn new_handler(&mut self) -> Self::ProtocolsHandler {
-        CustomProtosHandler::new(self.protocols.clone())
-    }
+	fn new_handler(&mut self) -> Self::ProtocolsHandler {
+		CustomProtosHandler::new(self.protocols.clone())
+	}
 
-    fn inject_connected(&mut self, _: PeerId, _: ConnectedPoint) {}
+	fn inject_connected(&mut self, _: PeerId, _: ConnectedPoint) {}
 
-    // TODO: send event for closed protocols
-    fn inject_disconnected(&mut self, _: &PeerId, _: ConnectedPoint) {}
+	// TODO: send event for closed protocols
+	fn inject_disconnected(&mut self, _: &PeerId, _: ConnectedPoint) {}
 
-    fn inject_node_event(
-        &mut self,
-        _: PeerId,
-        _: <Self::ProtocolsHandler as ProtocolsHandler>::OutEvent,
-    ) {
-    }
+	fn inject_node_event(
+		&mut self,
+		_: PeerId,
+		_: <Self::ProtocolsHandler as ProtocolsHandler>::OutEvent,
+	) {
+	}
 
-    fn poll(
-        &mut self,
-        _: &mut TTopology,
-    ) -> Async<
-        NetworkBehaviourAction<
-            <Self::ProtocolsHandler as ProtocolsHandler>::InEvent,
-            Self::OutEvent,
-        >,
-    > {
-        Async::NotReady
-    }
+	fn poll(
+		&mut self,
+		_: &mut TTopology,
+	) -> Async<
+		NetworkBehaviourAction<
+			<Self::ProtocolsHandler as ProtocolsHandler>::InEvent,
+			Self::OutEvent,
+		>,
+	> {
+		if !self.events.is_empty() {
+			Async::Ready(self.events.remove(0))
+		} else {
+			Async::NotReady
+		}
+	}
 }
