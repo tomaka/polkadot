@@ -466,7 +466,7 @@ impl Topology for NetTopology {
 
 	#[inline]
 	fn addresses_of_peer(&mut self, peer: &PeerId) -> Vec<Multiaddr> {
-		self.addrs_of_peer(peer).map(|(a, _)| a).collect()
+		self.addrs_of_peer(peer).map(|(a, _)| a.clone()).collect()
 	}
 
 	fn peers(&self) -> Vec<PeerId> {
