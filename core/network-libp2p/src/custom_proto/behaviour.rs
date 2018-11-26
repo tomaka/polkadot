@@ -28,7 +28,10 @@ use tokio_io::{AsyncRead, AsyncWrite};
 /// Network behaviour that handles opening substreams for custom protocols with other nodes.
 pub struct CustomProtosBehaviour<TSubstream> {
 	/// List of protocols to open with peers. Never modified.
-	protocols: RegisteredProtocols,
+	registered_protocols: RegisteredProtocols,
+
+	/// List of protocols that we have open.
+	open_protocols: Vec<(PeerId, ProtocolId)>,
 
 	/// Events to produce from `poll()`.
 	events: SmallVec<[NetworkBehaviourAction<CustomProtosHandlerIn, (PeerId, CustomProtosHandlerOut)>; 4]>,
@@ -39,9 +42,10 @@ pub struct CustomProtosBehaviour<TSubstream> {
 
 impl<TSubstream> CustomProtosBehaviour<TSubstream> {
 	/// Creates a `CustomProtosBehaviour`.
-	pub fn new(protocols: RegisteredProtocols) -> Self {
+	pub fn new(registered_protocols: RegisteredProtocols) -> Self {
 		CustomProtosBehaviour {
-			protocols,
+			registered_protocols,
+			open_protocols: Vec::with_capacity(50),		// TODO: pass capacity to constructor
 			events: SmallVec::new(),
 			marker: PhantomData,
 		}
@@ -77,19 +81,48 @@ where
 	type OutEvent = (PeerId, CustomProtosHandlerOut);
 
 	fn new_handler(&mut self) -> Self::ProtocolsHandler {
-		CustomProtosHandler::new(self.protocols.clone())
+		CustomProtosHandler::new(self.registered_protocols.clone())
 	}
 
 	fn inject_connected(&mut self, _: PeerId, _: ConnectedPoint) {}
 
-	// TODO: send event for closed protocols
-	fn inject_disconnected(&mut self, _: &PeerId, _: ConnectedPoint) {}
+	fn inject_disconnected(&mut self, peer_id: &PeerId, _: ConnectedPoint) {
+		if let Some(pos) = self.open_protocols.iter().position(|(p, _)| p == peer_id) {
+			let (_, protocol_id) = self.open_protocols.remove(pos);
+			let event = CustomProtosHandlerOut::CustomProtocolClosed {
+				protocol_id,
+				result: Ok(()),
+			};
+			self.events.push(NetworkBehaviourAction::GenerateEvent((peer_id.clone(), event)));
+		}
+	}
 
 	fn inject_node_event(
 		&mut self,
-		_: PeerId,
-		_: <Self::ProtocolsHandler as ProtocolsHandler>::OutEvent,
+		source: PeerId,
+		event: <Self::ProtocolsHandler as ProtocolsHandler>::OutEvent,
 	) {
+		match event {
+			CustomProtosHandlerOut::CustomProtocolClosed { ref protocol_id, .. } => {
+				let pos = self.open_protocols.iter().position(|(s, p)| {
+					s == &source && p == protocol_id
+				});
+
+				if let Some(pos) = pos {
+					self.open_protocols.remove(pos);
+				} else {
+					debug_assert!(false, "Couldn't find protocol in open_protocols");
+				}
+			},
+			CustomProtosHandlerOut::CustomProtocolOpen { ref protocol_id, .. } => {
+				debug_assert!(!self.open_protocols.iter().any(|(s, p)| {
+					s == &source && p == protocol_id
+				}));
+				self.open_protocols.push((source.clone(), protocol_id.clone()));
+			},
+		}
+
+		self.events.push(NetworkBehaviourAction::GenerateEvent((source, event)));
 	}
 
 	fn poll(
