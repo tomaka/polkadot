@@ -48,7 +48,7 @@ where TProtos: IntoIterator<Item = RegisteredProtocol> {
 	let local_peer_id = local_public_key.clone().into_peer_id();
 
 	// Initialize the topology of the network.
-	let mut topology = if let Some(ref path) = config.net_config_path {
+	let topology = if let Some(ref path) = config.net_config_path {
 		let path = Path::new(path).join(NODES_FILE);
 		debug!(target: "sub-libp2p", "Initializing peer store for JSON file {:?}", path);
 		NetTopology::from_file(path)
@@ -58,7 +58,7 @@ where TProtos: IntoIterator<Item = RegisteredProtocol> {
 	};
 
 	// Build the swarm.
-	let swarm = {
+	let mut swarm = {
 		let registered_custom = RegisteredProtocols(registered_custom.into_iter().collect());
 		let behaviour = Behaviour::new(&config, local_peer_id.clone(), registered_custom);
 		let transport = transport::build_transport(local_private_key);
@@ -119,7 +119,7 @@ where TProtos: IntoIterator<Item = RegisteredProtocol> {
 		match parse_str_addr(reserved) {
 			Ok((peer_id, addr)) => {
 				Swarm::topology_mut(&mut swarm).add_bootstrap_addr(&peer_id, addr.clone());
-				swarm.add_reserved_peer(peer_id, addr.clone());
+				swarm.add_reserved_peer(peer_id.clone(), addr.clone());
 				// TODO:
 				/*if let Err(_) = Swarm::dial(&mut swarm, peer_id) {
 					warn!(target: "sub-libp2p", "Failed to dial reserved node: {}", reserved);
@@ -291,7 +291,7 @@ impl Service {
 		protocol: ProtocolId,
 		data: Vec<u8>
 	) {
-		if let Some(peer_id) = self.peer_id_of_node(node_index) {
+		if let Some(peer_id) = self.nodes_addresses.get(&node_index).map(|(id, _)| id) {
 			self.swarm.send_custom_message(peer_id, protocol, data)
 		}
 	}
@@ -301,7 +301,7 @@ impl Service {
 	/// Same as `drop_node`, except that the same peer will not be able to reconnect later.
 	#[inline]
 	pub fn ban_node(&mut self, node_index: NodeIndex) {
-		if let Some(peer_id) = self.peer_id_of_node(node_index) {
+		if let Some(peer_id) = self.nodes_addresses.get(&node_index).map(|(id, _)| id) {
 			info!(target: "sub-libp2p", "Banned {:?}", peer_id);
 			self.swarm.ban_node(peer_id.clone());
 		}
@@ -313,7 +313,7 @@ impl Service {
 	/// Corresponding closing events will be generated once the closing actually happens.
 	#[inline]
 	pub fn drop_node(&mut self, node_index: NodeIndex) {
-		if let Some(peer_id) = self.peer_id_of_node(node_index) {
+		if let Some(peer_id) = self.nodes_addresses.get(&node_index).map(|(id, _)| id) {
 			self.swarm.drop_node(peer_id);
 		}
 	}

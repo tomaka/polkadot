@@ -108,13 +108,14 @@ where
 				} else {
 					debug_assert!(false, "Couldn't find protocol in open_protocols");
 				}
-			},
+			}
 			CustomProtosHandlerOut::CustomProtocolOpen { ref protocol_id, .. } => {
 				debug_assert!(!self.open_protocols.iter().any(|(s, p)| {
 					s == &source && p == protocol_id
 				}));
 				self.open_protocols.push((source.clone(), protocol_id.clone()));
-			},
+			}
+			_ => {}
 		}
 
 		self.events.push(NetworkBehaviourAction::GenerateEvent((source, event)));
