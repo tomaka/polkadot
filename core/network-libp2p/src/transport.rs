@@ -16,7 +16,7 @@
 
 use futures::prelude::*;
 use libp2p::{self, PeerId, Transport, mplex, secio, yamux};
-use libp2p::core::{either, upgrade, transport::boxed::Boxed, muxing::StreamMuxerBox};
+use libp2p::core::{upgrade, transport::boxed::Boxed, muxing::StreamMuxerBox};
 use libp2p::core::upgrade::{InboundUpgradeExt, OutboundUpgradeExt};
 use libp2p::transport_timeout::TransportTimeout;
 use std::time::Duration;
@@ -33,19 +33,15 @@ pub fn build_transport(
 	let base = libp2p::CommonTransport::new()
 		.with_upgrade(secio::SecioConfig::new(local_private_key))
 		.and_then(move |out, endpoint| {
-			// TODO: restore yamux
-			/*let yamux = yamux::Config::default()
-				.map_inbound(either::EitherOutput::First)
-				.map_outbound(either::EitherOutput::First);
-			let mplex = mplex_config
-				.map_inbound(either::EitherOutput::Second)
-				.map_outbound(either::EitherOutput::Second);*/
-			let upgrade = mplex_config;
-				//.or_inbound(mplex.clone())
-				//.or_outbound(mplex.clone());
 			let peer_id = out.remote_key.into_peer_id();
-			upgrade::apply(out.stream, upgrade, endpoint.into())
-				.map(move |muxer| (peer_id, StreamMuxerBox::new(muxer)))
+			let peer_id2 = peer_id.clone();
+			let upgrade = upgrade::OrUpgrade::new(yamux::Config::default(), mplex_config.clone())
+				// TODO: use `.map` instead of two maps
+				.map_inbound(move |muxer| (peer_id, muxer))
+				.map_outbound(move |muxer| (peer_id2, muxer));
+
+			upgrade::apply(out.stream, upgrade, endpoint)
+				.map(|(id, muxer)| (id, StreamMuxerBox::new(muxer)))
 				.map_err(|e| e.into_io_error())
 		});
 
