@@ -46,6 +46,7 @@ pub struct ConnecLimitBehaviour<TSubstream> {
 
 	/// List of the IDs of disabled peers, and when the ban expires.
 	/// Purged at a regular interval.
+	// TODO: purge at a regular interval
 	disabled_peers: FnvHashMap<PeerId, Instant>,
 
 	/// Future that will fire when we need to connect to new nodes.

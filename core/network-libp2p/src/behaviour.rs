@@ -16,7 +16,8 @@
 
 use crate::connec_limit::ConnecLimitBehaviour;
 use crate::custom_proto::{CustomProtosBehaviour, RegisteredProtocols};
-use crate::NetworkConfiguration;
+use crate::{NetworkConfiguration, ProtocolId};
+use bytes::Bytes;
 use libp2p::core::{Multiaddr, PeerId};
 use libp2p::identify::{PeriodicIdentifyBehaviour, IdentifyListen, IdentifyInfo};
 use libp2p::kad::Kademlia;
@@ -59,6 +60,17 @@ impl<TSubstream> Behaviour<TSubstream> {
 			periodic_identify: PeriodicIdentifyBehaviour::new(),
 			//identify_listen: IdentifyListen::new(id_info),
 		}
+	}
+
+	/// Sends a message to a peer using the given custom protocol.
+	///
+	/// Has no effect if the custom protocol is not open with the given peer.
+	///
+	/// Also note that even we have a valid open substream, it may in fact be already closed
+	/// without us knowing, in which case the packet will not be received.
+	#[inline]
+	pub fn send_custom_message(&mut self, target: &PeerId, protocol_id: ProtocolId, data: impl Into<Bytes>) {
+		self.custom_protocols.send_packet(target, protocol_id, data)
 	}
 
 	/// Starts a Kademlia `FIND_NODE` query for a random `PeerId`.

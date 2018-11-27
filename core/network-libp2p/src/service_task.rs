@@ -87,9 +87,11 @@ where TProtos: IntoIterator<Item = RegisteredProtocol> {
 		match parse_str_addr(bootnode) {
 			Ok((peer_id, addr)) => {
 				Swarm::topology_mut(&mut swarm).add_bootstrap_addr(&peer_id, addr.clone());
-				if let Err(_) = Swarm::dial(&mut swarm, peer_id) {
+				// TODO:
+				/*if let Err(_) = Swarm::dial(&mut swarm, peer_id) {
 					warn!(target: "sub-libp2p", "Failed to dial boot node: {}", bootnode);
-				}
+				}*/
+				Swarm::dial(&mut swarm, peer_id);
 			},
 			Err(_) => {
 				// If the format of the bootstrap node is not a multiaddr, try to parse it as
@@ -105,7 +107,7 @@ where TProtos: IntoIterator<Item = RegisteredProtocol> {
 
 				info!(target: "sub-libp2p", "Dialing {} with no peer id", addr);
 				info!(target: "sub-libp2p", "Keep in mind that doing so is vulnerable to man-in-the-middle attacks");
-				if let Err(addr) = swarm.dial_addr(addr) {
+				if let Err(addr) = Swarm::dial_addr(&mut swarm, addr) {
 					warn!(target: "sub-libp2p", "Bootstrap address not supported: {}", addr);
 				}
 			},
@@ -113,15 +115,16 @@ where TProtos: IntoIterator<Item = RegisteredProtocol> {
 	}
 
 	// Initialize the reserved peers.
-	let mut reserved_peers = FnvHashSet::default();
 	for reserved in config.reserved_nodes.iter() {
 		match parse_str_addr(reserved) {
 			Ok((peer_id, addr)) => {
 				Swarm::topology_mut(&mut swarm).add_bootstrap_addr(&peer_id, addr.clone());
 				swarm.add_reserved_peer(peer_id, addr.clone());
-				if let Err(_) = Swarm::dial(&mut swarm, peer_id) {
+				// TODO:
+				/*if let Err(_) = Swarm::dial(&mut swarm, peer_id) {
 					warn!(target: "sub-libp2p", "Failed to dial reserved node: {}", reserved);
-				}
+				}*/
+				Swarm::dial(&mut swarm, peer_id);
 			},
 			Err(_) =>
 				// TODO: also handle the `IP:PORT` format ; however we need to somehow add the
@@ -231,7 +234,7 @@ impl Service {
 	/// Returns the peer id of the local node.
 	#[inline]
 	pub fn peer_id(&self) -> &PeerId {
-		self.kad_system.local_peer_id()
+		unimplemented!()// TODO: self.kad_system.local_peer_id()
 	}
 
 	/// Returns the list of all the peers we are connected to.
@@ -242,8 +245,8 @@ impl Service {
 
 	/// Try to add a reserved peer.
 	pub fn add_reserved_peer(&mut self, peer_id: PeerId, addr: Multiaddr) {
-		self.topology.add_bootstrap_addr(&peer_id, addr.clone());
-		self.add_reserved_peer(peer_id.clone(), addr.clone());
+		Swarm::topology_mut(&mut self.swarm).add_bootstrap_addr(&peer_id, addr.clone());
+		self.swarm.add_reserved_peer(peer_id.clone(), addr.clone());
 		Swarm::dial(&mut self.swarm, peer_id);
 	}
 
@@ -252,14 +255,8 @@ impl Service {
 	/// If we are in reserved mode and we were connected to a node with this peer ID, then this
 	/// method will disconnect it and return its index.
 	pub fn remove_reserved_peer(&mut self, peer_id: PeerId) -> Option<NodeIndex> {
-		self.reserved_peers.remove(&peer_id);
-		if self.reserved_only {
-			if let Some(node_index) = self.swarm.latest_node_by_peer_id(&peer_id) {
-				self.drop_node_inner(node_index, DisconnectReason::NoSlot, None);
-				return Some(node_index);
-			}
-		}
-		None
+		self.swarm.remove_reserved_peer(peer_id);
+		None		// TODO:
 	}
 
 	/// Start accepting all peers again if we weren't.
@@ -304,7 +301,7 @@ impl Service {
 	/// Same as `drop_node`, except that the same peer will not be able to reconnect later.
 	#[inline]
 	pub fn ban_node(&mut self, node_index: NodeIndex) {
-		if let Some(peer_id) = self.swarm.peer_id_of_node(node_index) {
+		if let Some(peer_id) = self.peer_id_of_node(node_index) {
 			info!(target: "sub-libp2p", "Banned {:?}", peer_id);
 			self.swarm.ban_node(peer_id.clone());
 		}
@@ -321,7 +318,7 @@ impl Service {
 		}
 	}
 
-	/// Counts the number of non-reserved ingoing connections.
+	/*/// Counts the number of non-reserved ingoing connections.
 	fn num_ingoing_connections(&self) -> usize {
 		self.swarm.nodes()
 			.filter(|&i| self.swarm.node_endpoint(i) == Some(Endpoint::Listener) &&
@@ -344,7 +341,7 @@ impl Service {
 	fn connect_to_nodes(&mut self) {
 		// Make sure we are connected or connecting to all the reserved nodes.
 		for reserved in self.reserved_peers.iter() {
-			let addrs = self.topology.addrs_of_peer(&reserved);
+			let addrs = Swarm::topology_mut(&mut self.swarm).addrs_of_peer(&reserved);
 			for (addr, _) in addrs {
 				let _ = self.swarm.ensure_connection(reserved.clone(), addr.clone());
 			}
@@ -353,7 +350,7 @@ impl Service {
 		// Counter of number of connections to open, decreased when we open one.
 		let mut num_to_open = self.max_outgoing_connections - self.num_outgoing_connections();
 
-		let (to_try, will_change) = self.topology.addrs_to_attempt();
+		let (to_try, will_change) = Swarm::topology_mut(&mut self.swarm).addrs_to_attempt();
 		for (peer_id, addr) in to_try {
 			if num_to_open == 0 {
 				break;
@@ -394,7 +391,7 @@ impl Service {
 			debug!(target: "sub-libp2p", "Rejected connection to/from ourself: {:?}", endpoint);
 			assert_eq!(self.swarm.drop_node(node_index), Ok(Vec::new()));
 			if let ConnectedPoint::Dialer { ref address } = endpoint {
-				self.topology.report_failed_to_connect(address);
+				Swarm::topology_mut(&mut self.swarm).report_failed_to_connect(address);
 			}
 			return;
 		}
@@ -405,7 +402,7 @@ impl Service {
 			debug!(target: "sub-libp2p", "Rejected non-reserved peer {:?}", peer_id);
 			assert_eq!(self.swarm.drop_node(node_index), Ok(Vec::new()));
 			if let ConnectedPoint::Dialer { ref address } = endpoint {
-				self.topology.report_failed_to_connect(address);
+				Swarm::topology_mut(&mut self.swarm).report_failed_to_connect(address);
 			}
 			return;
 		}
@@ -416,7 +413,7 @@ impl Service {
 				info!(target: "sub-libp2p", "Rejected connection from disabled peer: {:?}", peer_id);
 				assert_eq!(self.swarm.drop_node(node_index), Ok(Vec::new()));
 				if let ConnectedPoint::Dialer { ref address } = endpoint {
-					self.topology.report_failed_to_connect(address);
+					Swarm::topology_mut(&mut self.swarm).report_failed_to_connect(address);
 				}
 				return;
 			}
@@ -436,7 +433,7 @@ impl Service {
 			ConnectedPoint::Dialer { ref address } => {
 				if is_reserved || self.num_outgoing_connections() < self.max_outgoing_connections {
 					debug!(target: "sub-libp2p", "Connected to {:?} through {}", peer_id, address);
-					self.topology.report_connected(address, &peer_id);
+					Swarm::topology_mut(&mut self.swarm).report_connected(address, &peer_id);
 				} else {
 					debug!(target: "sub-libp2p", "Rejected dialed peer {:?} because we are full", peer_id);
 					assert_eq!(self.swarm.drop_node(node_index), Ok(Vec::new()));
@@ -452,10 +449,10 @@ impl Service {
 		// We are finally sure that we're connected.
 
 		if let ConnectedPoint::Dialer { ref address } = endpoint {
-			self.topology.report_connected(address, &peer_id);
+			Swarm::topology_mut(&mut self.swarm).report_connected(address, &peer_id);
 		}
 		self.nodes_addresses.insert(node_index, endpoint.clone());
-	}
+	}*/
 
 	/*/// Processes an event generated by the swarm.
 	///
@@ -473,12 +470,12 @@ impl Service {
 			},
 			SwarmEvent::Reconnected { node_index, endpoint, closed_custom_protocols } => {
 				if let Some(ConnectedPoint::Dialer { address }) = self.nodes_addresses.remove(&node_index) {
-					self.topology.report_disconnected(&address, DisconnectReason::FoundBetterAddr);
+					Swarm::topology_mut(&mut self.swarm).report_disconnected(&address, DisconnectReason::FoundBetterAddr);
 				}
 				if let ConnectedPoint::Dialer { ref address } = endpoint {
 					let peer_id = self.swarm.peer_id_of_node(node_index)
 						.expect("the swarm always produces events containing valid node indices");
-					self.topology.report_connected(address, peer_id);
+					Swarm::topology_mut(&mut self.swarm).report_connected(address, peer_id);
 				}
 				self.nodes_addresses.insert(node_index, endpoint);
 				Some(ServiceEvent::ClosedCustomProtocols {
@@ -489,7 +486,7 @@ impl Service {
 			SwarmEvent::NodeClosed { node_index, peer_id, closed_custom_protocols } => {
 				debug!(target: "sub-libp2p", "Connection to {:?} closed gracefully", peer_id);
 				if let Some(ConnectedPoint::Dialer { ref address }) = self.nodes_addresses.get(&node_index) {
-					self.topology.report_disconnected(address, DisconnectReason::RemoteClosed);
+					Swarm::topology_mut(&mut self.swarm).report_disconnected(address, DisconnectReason::RemoteClosed);
 				}
 				self.connect_to_nodes();
 				Some(ServiceEvent::NodeClosed {
@@ -499,7 +496,7 @@ impl Service {
 			},
 			SwarmEvent::DialFail { address, error } => {
 				debug!(target: "sub-libp2p", "Failed to dial address {}: {:?}", address, error);
-				self.topology.report_failed_to_connect(&address);
+				Swarm::topology_mut(&mut self.swarm).report_failed_to_connect(&address);
 				self.connect_to_nodes();
 				None
 			},
@@ -507,7 +504,7 @@ impl Service {
 				let closed_custom_protocols = self.swarm.drop_node(node_index)
 					.expect("the swarm always produces events containing valid node indices");
 				if let Some(ConnectedPoint::Dialer { address }) = self.nodes_addresses.remove(&node_index) {
-					self.topology.report_disconnected(&address, DisconnectReason::Useless);
+					Swarm::topology_mut(&mut self.swarm).report_disconnected(&address, DisconnectReason::Useless);
 				}
 				Some(ServiceEvent::NodeClosed {
 					node_index,
@@ -520,9 +517,9 @@ impl Service {
 					.clone();
 				let closed_custom_protocols = self.swarm.drop_node(node_index)
 					.expect("the swarm always produces events containing valid node indices");
-				self.topology.report_useless(&peer_id);
+				Swarm::topology_mut(&mut self.swarm).report_useless(&peer_id);
 				if let Some(ConnectedPoint::Dialer { address }) = self.nodes_addresses.remove(&node_index) {
-					self.topology.report_disconnected(&address, DisconnectReason::Useless);
+					Swarm::topology_mut(&mut self.swarm).report_disconnected(&address, DisconnectReason::Useless);
 				}
 				Some(ServiceEvent::NodeClosed {
 					node_index,
@@ -532,7 +529,7 @@ impl Service {
 			SwarmEvent::NodeInfos { node_index, listen_addrs, .. } => {
 				let peer_id = self.swarm.peer_id_of_node(node_index)
 					.expect("the swarm always produces events containing valid node indices");
-				self.topology.add_self_reported_listen_addrs(
+				Swarm::topology_mut(&mut self.swarm).add_self_reported_listen_addrs(
 					peer_id,
 					listen_addrs.into_iter()
 				);
@@ -585,24 +582,24 @@ impl Service {
 		}
 	}*/
 
-	// TODO: restore
-	/*/// Polls for what happened on the main network side.
+	/// Polls for what happened on the main network side.
 	fn poll_swarm(&mut self) -> Poll<Option<ServiceEvent>, IoError> {
 		loop {
 			match self.swarm.poll() {
-				Ok(Async::Ready(Some(event))) =>
-					if let Some(event) = self.process_network_event(event) {
+				Ok(Async::Ready(Some(event))) => (),
+					// TODO:
+					/*if let Some(event) = self.process_network_event(event) {
 						return Ok(Async::Ready(Some(event)));
-					}
+					}*/
 				Ok(Async::NotReady) => return Ok(Async::NotReady),
 				Ok(Async::Ready(None)) => unreachable!("The Swarm stream never ends"),
 				// TODO: this `Err` contains a `Void` ; remove variant when Rust allows that
 				Err(_) => unreachable!("The Swarm stream never errors"),
 			}
 		}
-	}*/
+	}
 
-	/// Polls the Kademlia system.
+	/// Polls the Kademlia-related events.
 	fn poll_kademlia(&mut self) -> Poll<Option<ServiceEvent>, IoError> {
 		// Poll the future that fires when we need to perform a random Kademlia query.
 		loop {
@@ -629,7 +626,7 @@ impl Service {
 	fn poll_next_connect_refresh(&mut self) -> Poll<Option<ServiceEvent>, IoError> {
 		loop {
 			match self.next_connect_to_nodes.poll() {
-				Ok(Async::Ready(())) => self.connect_to_nodes(),
+				Ok(Async::Ready(())) => {},// TODO: self.connect_to_nodes(),
 				Ok(Async::NotReady) => return Ok(Async::NotReady),
 				Err(err) => {
 					warn!(target: "sub-libp2p", "Connect to nodes timer errored: {:?}", err);
@@ -646,14 +643,12 @@ impl Service {
 				Ok(Async::NotReady) => return Ok(Async::NotReady),
 				Ok(Async::Ready(Some(_))) => {
 					debug!(target: "sub-libp2p", "Cleaning and flushing topology");
-					self.topology.cleanup();
-					if let Err(err) = self.topology.flush_to_disk() {
+					Swarm::topology_mut(&mut self.swarm).cleanup();
+					if let Err(err) = Swarm::topology_mut(&mut self.swarm).flush_to_disk() {
 						warn!(target: "sub-libp2p", "Failed to flush topology: {:?}", err);
 					}
-					let now = Instant::now();
-					self.disabled_peers.retain(move |_, v| *v < now);
 					debug!(target: "sub-libp2p", "Topology now contains {} nodes",
-						self.topology.num_peers());
+						Swarm::topology_mut(&mut self.swarm).num_peers());
 				},
 				Ok(Async::Ready(None)) => {
 					warn!(target: "sub-libp2p", "Topology flush stream ended unexpectedly");
@@ -670,7 +665,7 @@ impl Service {
 
 impl Drop for Service {
 	fn drop(&mut self) {
-		if let Err(err) = self.topology.flush_to_disk() {
+		if let Err(err) = Swarm::topology_mut(&mut self.swarm).flush_to_disk() {
 			warn!(target: "sub-libp2p", "Failed to flush topology: {:?}", err);
 		}
 	}

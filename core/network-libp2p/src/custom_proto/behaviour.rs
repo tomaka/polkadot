@@ -50,12 +50,7 @@ impl<TSubstream> CustomProtosBehaviour<TSubstream> {
 			marker: PhantomData,
 		}
 	}
-}
 
-impl<TSubstream> CustomProtosBehaviour<TSubstream>
-where
-	TSubstream: AsyncRead + AsyncWrite,
-{
 	/// Sends a message to a peer using the given custom protocol.
 	///
 	/// Has no effect if the custom protocol is not open with the given peer.
