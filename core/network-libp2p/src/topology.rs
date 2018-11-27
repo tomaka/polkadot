@@ -16,7 +16,8 @@
 
 use fnv::FnvHashMap;
 use parking_lot::Mutex;
-use libp2p::{Multiaddr, PeerId, core::topology::Topology, kad::KademliaTopology, multihash::Multihash};
+use libp2p::{Multiaddr, PeerId, core::topology::Topology, multihash::Multihash};
+use libp2p::kad::{KadConnectionType, KademliaTopology};
 use serde_json;
 use std::{cmp, fs, iter, vec};
 use std::io::{Read, Cursor, Error as IoError, ErrorKind as IoErrorKind, Write, BufReader, BufWriter};
@@ -438,9 +439,9 @@ impl KademliaTopology for NetTopology {
 	type ClosestPeersIter = vec::IntoIter<PeerId>;
 	type GetProvidersIter = iter::Empty<PeerId>;
 
-	fn add_kad_discovered_address(&mut self, peer: &PeerId, addr: Multiaddr) {
+	fn add_kad_discovered_address(&mut self, peer: PeerId, addr: Multiaddr, ty: KadConnectionType) {
 		// TODO: correct bool
-		self.add_discovered_addrs(peer, iter::once((addr, false)));
+		self.add_discovered_addrs(&peer, iter::once((addr, false)));
 	}
 
 	fn closest_peers(&mut self, target: &Multihash, max: usize) -> Self::ClosestPeersIter {
@@ -460,17 +461,9 @@ impl KademliaTopology for NetTopology {
 
 // TODO: is that a good idea?
 impl Topology for NetTopology {
-	fn add_discovered_address(&mut self, peer: &PeerId, addr: Multiaddr) {
-		unimplemented!()		// TODO:
-	}
-
 	#[inline]
 	fn addresses_of_peer(&mut self, peer: &PeerId) -> Vec<Multiaddr> {
 		self.addrs_of_peer(peer).map(|(a, _)| a.clone()).collect()
-	}
-
-	fn peers(&self) -> Vec<PeerId> {
-		unimplemented!()		// TODO:
 	}
 }
 

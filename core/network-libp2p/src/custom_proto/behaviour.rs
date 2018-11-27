@@ -19,7 +19,7 @@ use crate::custom_proto::upgrade::RegisteredProtocols;
 use crate::ProtocolId;
 use bytes::Bytes;
 use futures::prelude::*;
-use libp2p::core::nodes::{ConnectedPoint, NetworkBehaviour, NetworkBehaviourAction};
+use libp2p::core::swarm::{ConnectedPoint, NetworkBehaviour, NetworkBehaviourAction};
 use libp2p::core::{protocols_handler::ProtocolsHandler, PeerId};
 use smallvec::SmallVec;
 use std::marker::PhantomData;

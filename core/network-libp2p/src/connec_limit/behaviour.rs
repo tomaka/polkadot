@@ -19,7 +19,7 @@ use crate::connec_limit::handler::ConnecLimitHandler;
 use crate::topology::DisconnectReason;
 use fnv::{FnvHashMap, FnvHashSet};
 use futures::prelude::*;
-use libp2p::core::nodes::{ConnectedPoint, NetworkBehaviour, NetworkBehaviourAction};
+use libp2p::core::swarm::{ConnectedPoint, NetworkBehaviour, NetworkBehaviourAction};
 use libp2p::core::{protocols_handler::ProtocolsHandler, Multiaddr, PeerId};
 use std::{marker::PhantomData, time::Duration, time::Instant};
 use tokio_io::{AsyncRead, AsyncWrite};
@@ -127,7 +127,7 @@ impl<TSubstream> ConnecLimitBehaviour<TSubstream> {
 	/// Same as `drop_node`, except that the same peer will not be able to reconnect later.
 	#[inline]
 	pub fn ban_node(&mut self, peer_id: PeerId) {
-		self.drop_node_inner(peer_id, DisconnectReason::Banned, Some(PEER_DISABLE_DURATION));
+		self.drop_node_inner(&peer_id, DisconnectReason::Banned, Some(PEER_DISABLE_DURATION));
 	}
 
 	/// Disconnects a peer.
@@ -146,7 +146,8 @@ impl<TSubstream> ConnecLimitBehaviour<TSubstream> {
 		reason: DisconnectReason,
 		disable_duration: Option<Duration>
 	) {
-		// Kill the node from the swarm, and inject an event about it.
+		// TODO:
+		/*// Kill the node from the swarm, and inject an event about it.
 		// TODO: actually do that
 		if let Some(ConnectedPoint::Dialer { address }) = self.nodes_addresses.remove(&node_index) {
 			self.topology.report_disconnected(&address, reason);
@@ -157,7 +158,7 @@ impl<TSubstream> ConnecLimitBehaviour<TSubstream> {
 			self.disabled_peers.insert(peer_id, timeout);
 		}
 
-		self.connect_to_nodes();
+		self.connect_to_nodes();*/
 	}
 }
 

@@ -18,17 +18,17 @@ use crate::connec_limit::ConnecLimitBehaviour;
 use crate::custom_proto::{CustomProtosBehaviour, RegisteredProtocols};
 use crate::NetworkConfiguration;
 use libp2p::core::{Multiaddr, PeerId};
-use libp2p::identify::{PeriodicIdentification, IdentifyListen, IdentifyInfo};
+use libp2p::identify::{PeriodicIdentifyBehaviour, IdentifyListen, IdentifyInfo};
 use libp2p::kad::Kademlia;
-use libp2p::ping::{PeriodicPingHandler, PingListenHandler};
+use libp2p::ping::{PeriodicPingBehaviour, PingListenBehaviour};
 
 /// General behaviour of the network.
 #[derive(NetworkBehaviour)]
 pub struct Behaviour<TSubstream> {
 	/// Periodically ping nodes, and close the connection if it's unresponsive.
-	periodic_ping: PeriodicPingHandler<TSubstream>,
+	periodic_ping: PeriodicPingBehaviour<TSubstream>,
 	/// Respond to incoming pings.
-	ping_listen: PingListenHandler<TSubstream>,
+	ping_listen: PingListenBehaviour<TSubstream>,
 	/// Enforces disabled and reserved peers, and connection limit.
 	limiter: ConnecLimitBehaviour<TSubstream>,
 	/// Custom protocols (dot, bbq, sub, etc.).
@@ -36,7 +36,7 @@ pub struct Behaviour<TSubstream> {
 	/// Kademlia requests and answers.
 	kademlia: Kademlia<TSubstream>,
 	/// Periodically identifies the remote.
-	periodic_identify: PeriodicIdentification<TSubstream>,
+	periodic_identify: PeriodicIdentifyBehaviour<TSubstream>,
 	///// Respond to identify requests.
 	//identify_listen: IdentifyListen<TSubstream>,
 }
@@ -51,12 +51,12 @@ impl<TSubstream> Behaviour<TSubstream> {
 		};*/
 
 		Behaviour {
-			periodic_ping: PeriodicPingHandler::new(),
-			ping_listen: PingListenHandler::new(),
+			periodic_ping: PeriodicPingBehaviour::new(),
+			ping_listen: PingListenBehaviour::new(),
 			limiter: ConnecLimitBehaviour::new(config),
 			custom_protocols: CustomProtosBehaviour::new(protocols),
 			kademlia: Kademlia::new(local_peer_id),
-			periodic_identify: PeriodicIdentification::new(),
+			periodic_identify: PeriodicIdentifyBehaviour::new(),
 			//identify_listen: IdentifyListen::new(id_info),
 		}
 	}
@@ -110,14 +110,4 @@ impl<TSubstream> Behaviour<TSubstream> {
 	pub fn drop_node(&mut self, peer_id: &PeerId) {
 		self.limiter.drop_node(&peer_id);
 	}
-}
-
-
-// TODO: remove or put in tests module
-
-fn requires_net_behaviour<T: ::libp2p::core::nodes::NetworkBehaviour<::topology::NetTopology>>() {
-}
-
-fn test() {
-	requires_net_behaviour::<PeriodicPingHandler<::libp2p::core::nodes::Substream<::libp2p::core::muxing::StreamMuxerBox>>>();
 }
