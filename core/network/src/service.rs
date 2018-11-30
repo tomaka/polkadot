@@ -325,12 +325,6 @@ fn run_thread<B: BlockT + 'static, S: NetworkSpecialization<B>, H: ExHashT>(
 		let mut net_sync = NetSyncIo::new(&network_service, protocol_id);
 
 		match event {
-			NetworkServiceEvent::NodeClosed { node_index, closed_custom_protocols } => {
-				if !closed_custom_protocols.is_empty() {
-					debug_assert_eq!(closed_custom_protocols, &[protocol_id]);
-					protocol.on_peer_disconnected(&mut net_sync, node_index);
-				}
-			}
 			NetworkServiceEvent::ClosedCustomProtocols { node_index, protocols } => {
 				if !protocols.is_empty() {
 					debug_assert_eq!(protocols, &[protocol_id]);
