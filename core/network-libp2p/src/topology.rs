@@ -17,7 +17,7 @@
 use fnv::FnvHashMap;
 use parking_lot::Mutex;
 use libp2p::{Multiaddr, PeerId, core::topology::Topology, multihash::Multihash};
-use libp2p::kad::{KadConnectionType, KademliaTopology};
+use libp2p::kad::{KBucketsPeerId, KadConnectionType, KademliaTopology};
 use serde_json;
 use std::{cmp, fs, iter, vec};
 use std::io::{Read, Cursor, Error as IoError, ErrorKind as IoErrorKind, Write, BufReader, BufWriter};
@@ -445,8 +445,12 @@ impl KademliaTopology for NetTopology {
 	}
 
 	fn closest_peers(&mut self, target: &Multihash, max: usize) -> Self::ClosestPeersIter {
-		// TODO:
-		unimplemented!()
+		// TODO: temporary ; very inefficient
+		let mut peers = self.store.keys().cloned().collect::<Vec<_>>();
+		peers.sort_by(|a, b| {
+			b.as_ref().distance_with(target).cmp(&a.as_ref().distance_with(target))
+		});
+		peers.into_iter()
 	}
 
 	fn add_provider(&mut self, _: Multihash, _: PeerId) {
