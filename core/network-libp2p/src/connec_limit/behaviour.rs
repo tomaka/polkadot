@@ -19,7 +19,7 @@ use crate::connec_limit::handler::ConnecLimitHandler;
 use crate::topology::DisconnectReason;
 use fnv::{FnvHashMap, FnvHashSet};
 use futures::prelude::*;
-use libp2p::core::swarm::{ConnectedPoint, NetworkBehaviour, NetworkBehaviourAction};
+use libp2p::core::swarm::{ConnectedPoint, NetworkBehaviour, NetworkBehaviourAction, PollParameters};
 use libp2p::core::{protocols_handler::ProtocolsHandler, Multiaddr, PeerId};
 use std::{marker::PhantomData, time::Duration, time::Instant};
 use tokio_io::{AsyncRead, AsyncWrite};
@@ -188,7 +188,7 @@ where
 
 	fn poll(
 		&mut self,
-		_: &mut TTopology,
+		_: &mut PollParameters<TTopology>,
 	) -> Async<
 		NetworkBehaviourAction<
 			<Self::ProtocolsHandler as ProtocolsHandler>::InEvent,

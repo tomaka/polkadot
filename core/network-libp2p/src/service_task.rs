@@ -62,7 +62,7 @@ where TProtos: IntoIterator<Item = RegisteredProtocol> {
 		let registered_custom = RegisteredProtocols(registered_custom.into_iter().collect());
 		let behaviour = Behaviour::new(&config, local_peer_id.clone(), registered_custom);
 		let transport = transport::build_transport(local_private_key);
-		Swarm::new(transport, behaviour, topology)
+		Swarm::new(transport, behaviour, topology, local_public_key)
 	};
 
 	// Listen on multiaddresses.

@@ -20,19 +20,19 @@ use crate::{NetworkConfiguration, ProtocolId};
 use bytes::Bytes;
 use futures::prelude::*;
 use libp2p::core::{Multiaddr, PeerId, swarm::NetworkBehaviour, swarm::NetworkBehaviourAction};
-use libp2p::identify::{PeriodicIdentifyBehaviour, IdentifyListen, IdentifyInfo};
+use libp2p::identify::Identify;
 use libp2p::kad::Kademlia;
-use libp2p::ping::{PeriodicPingBehaviour, PingListenBehaviour};
+use libp2p::ping::{PeriodicPing, PingListen};
 use libp2p::tokio_io::{AsyncRead, AsyncWrite};
 
 /// General behaviour of the network.
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "BehaviourEvent", poll_method = "poll")]
-pub struct Behaviour<TSubstream> where TSubstream: AsyncRead + AsyncWrite {
+pub struct Behaviour<TSubstream: AsyncRead + AsyncWrite> {
 	/// Periodically ping nodes, and close the connection if it's unresponsive.
-	periodic_ping: PeriodicPingBehaviour<TSubstream>,
+	periodic_ping: PeriodicPing<TSubstream>,
 	/// Respond to incoming pings.
-	ping_listen: PingListenBehaviour<TSubstream>,
+	ping_listen: PingListen<TSubstream>,
 	/// Enforces disabled and reserved peers, and connection limit.
 	limiter: ConnecLimitBehaviour<TSubstream>,
 	/// Custom protocols (dot, bbq, sub, etc.).
@@ -40,10 +40,8 @@ pub struct Behaviour<TSubstream> where TSubstream: AsyncRead + AsyncWrite {
 	custom_protocols: CustomProtos<TSubstream>,
 	/// Kademlia requests and answers.
 	kademlia: Kademlia<TSubstream>,
-	/// Periodically identifies the remote.
-	periodic_identify: PeriodicIdentifyBehaviour<TSubstream>,
-	///// Respond to identify requests.
-	//identify_listen: IdentifyListen<TSubstream>,
+	/// Periodically identifies the remote and responds to incoming requests.
+	identify: Identify<TSubstream>,
 
 	/// Queue of events to produce for the outside.
 	#[behaviour(ignore)]
@@ -57,19 +55,17 @@ impl<TSubstream> Behaviour<TSubstream> where TSubstream: AsyncRead + AsyncWrite 
 	/// Builds a new `Behaviour`.
 	// TODO: redundancy between config and local_peer_id
 	pub fn new(config: &NetworkConfiguration, local_peer_id: PeerId, protocols: RegisteredProtocols) -> Self {
-		// TODO:
-		/*let id_info = IdentifyInfo {
-
-		};*/
-
 		Behaviour {
-			periodic_ping: PeriodicPingBehaviour::new(),
-			ping_listen: PingListenBehaviour::new(),
+			periodic_ping: PeriodicPing::new(),
+			ping_listen: PingListen::new(),
 			limiter: ConnecLimitBehaviour::new(config),
 			custom_protocols: CustomProtos::new(protocols),
 			kademlia: Kademlia::new(local_peer_id),
-			periodic_identify: PeriodicIdentifyBehaviour::new(),
-			//identify_listen: IdentifyListen::new(id_info),
+			identify: Identify::new(
+				// The agent and protocol versions; maybe we should use something better?
+				concat!("substrate/", env!("CARGO_PKG_VERSION")).to_owned(),
+				concat!("substrate/", env!("CARGO_PKG_VERSION")).to_owned()
+			),
 			events: Vec::new(),
 		}
 	}
