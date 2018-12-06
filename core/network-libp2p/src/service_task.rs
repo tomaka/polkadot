@@ -105,8 +105,8 @@ where TProtos: IntoIterator<Item = RegisteredProtocol> {
 					}
 				};
 
-				info!(target: "sub-libp2p", "Dialing {} with no peer id", addr);
-				info!(target: "sub-libp2p", "Keep in mind that doing so is vulnerable to man-in-the-middle attacks");
+				info!(target: "sub-libp2p", "Dialing {} with no peer id. Keep in mind that doing \
+					so is vulnerable to man-in-the-middle attacks.", addr);
 				if let Err(addr) = Swarm::dial_addr(&mut swarm, addr) {
 					warn!(target: "sub-libp2p", "Bootstrap address not supported: {}", addr);
 				}
@@ -472,7 +472,7 @@ impl Service {
 				})))
 			}
 			Ok(Async::Ready(Some((peer_id, CustomProtosHandlerOut::CustomProtocolClosed { protocol_id, result })))) => {
-				info!(target: "sub-libp2p", "Connection to {:?} closed: {:?}", peer_id, result);
+				debug!(target: "sub-libp2p", "Connection to {:?} closed: {:?}", peer_id, result);
 				let node_index = self.index_of_peer_or_assign(peer_id);
 				Ok(Async::Ready(Some(ServiceEvent::ClosedCustomProtocol {
 					node_index,
@@ -496,6 +496,7 @@ impl Service {
 
 	/// Polls the Kademlia-related events.
 	fn poll_kademlia(&mut self) -> Poll<Option<ServiceEvent>, IoError> {
+		// TODO: move this within the behaviour
 		// Poll the future that fires when we need to perform a random Kademlia query.
 		loop {
 			match self.next_kad_random_query.poll() {
@@ -521,7 +522,7 @@ impl Service {
 	fn poll_next_connect_refresh(&mut self) -> Poll<Option<ServiceEvent>, IoError> {
 		loop {
 			match self.next_connect_to_nodes.poll() {
-				Ok(Async::Ready(())) => {},// TODO: self.connect_to_nodes(),
+				Ok(Async::Ready(())) => self.next_connect_to_nodes.reset(Instant::now() + Duration::from_secs(30)),		// TODO:
 				Ok(Async::NotReady) => return Ok(Async::NotReady),
 				Err(err) => {
 					warn!(target: "sub-libp2p", "Connect to nodes timer errored: {:?}", err);

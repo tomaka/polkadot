@@ -79,7 +79,8 @@ where
 		CustomProtosHandler::new(self.registered_protocols.clone())
 	}
 
-	fn inject_connected(&mut self, _: PeerId, _: ConnectedPoint) {}
+	fn inject_connected(&mut self, _: PeerId, _: ConnectedPoint) {
+	}
 
 	fn inject_disconnected(&mut self, peer_id: &PeerId, _: ConnectedPoint) {
 		if let Some(pos) = self.open_protocols.iter().position(|(p, _)| p == peer_id) {

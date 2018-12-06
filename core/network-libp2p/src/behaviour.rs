@@ -20,7 +20,7 @@ use crate::{NetworkConfiguration, ProtocolId};
 use bytes::Bytes;
 use futures::prelude::*;
 use libp2p::core::{Multiaddr, PeerId, swarm::NetworkBehaviour, swarm::NetworkBehaviourAction};
-use libp2p::identify::Identify;
+use libp2p::identify::{Identify, IdentifyEvent};
 use libp2p::kad::Kademlia;
 use libp2p::ping::{PeriodicPing, PingListen};
 use libp2p::tokio_io::{AsyncRead, AsyncWrite};
@@ -41,6 +41,7 @@ pub struct Behaviour<TSubstream: AsyncRead + AsyncWrite> {
 	/// Kademlia requests and answers.
 	kademlia: Kademlia<TSubstream>,
 	/// Periodically identifies the remote and responds to incoming requests.
+	#[behaviour(handler = "on_identify")]
 	identify: Identify<TSubstream>,
 
 	/// Queue of events to produce for the outside.
@@ -86,6 +87,7 @@ impl<TSubstream> Behaviour<TSubstream> where TSubstream: AsyncRead + AsyncWrite 
 	/// Used to discover nodes.
 	pub fn perform_kad_random_query(&mut self) {
 		let random_peer_id = PeerId::random();
+		debug!(target: "sub-libp2p", "Starting random Kademlia request for {:?}", random_peer_id);
 		self.kademlia.find_node(random_peer_id);
 	}
 
@@ -133,11 +135,21 @@ impl<TSubstream> Behaviour<TSubstream> where TSubstream: AsyncRead + AsyncWrite 
 }
 
 impl<TSubstream> Behaviour<TSubstream> where TSubstream: AsyncRead + AsyncWrite {
+	#[inline]
 	fn on_custom<TTopology>(
 		&mut self,
 		event: <CustomProtos<TSubstream> as NetworkBehaviour<TTopology>>::OutEvent,
 	) {
 		self.events.push(event);
+	}
+
+	#[inline]
+	fn on_identify<TTopology>(
+		&mut self,
+		event: <Identify<TSubstream> as NetworkBehaviour<TTopology>>::OutEvent,
+	) {
+		let IdentifyEvent::Identified { peer_id, info, .. } = event;
+		trace!(target: "sub-libp2p", "Identified {:?} => {:?}", peer_id, info);
 	}
 
 	fn poll<TEv>(&mut self) -> Async<NetworkBehaviourAction<TEv, BehaviourEvent>> {
