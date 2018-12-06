@@ -15,7 +15,7 @@
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
 use crate::connec_limit::ConnecLimitBehaviour;
-use crate::custom_proto::{CustomProtosBehaviour, CustomProtosHandlerOut, RegisteredProtocols};
+use crate::custom_proto::{CustomProtos, CustomProtosHandlerOut, RegisteredProtocols};
 use crate::{NetworkConfiguration, ProtocolId};
 use bytes::Bytes;
 use futures::prelude::*;
@@ -37,7 +37,7 @@ pub struct Behaviour<TSubstream> where TSubstream: AsyncRead + AsyncWrite {
 	limiter: ConnecLimitBehaviour<TSubstream>,
 	/// Custom protocols (dot, bbq, sub, etc.).
 	#[behaviour(handler = "on_custom")]
-	custom_protocols: CustomProtosBehaviour<TSubstream>,
+	custom_protocols: CustomProtos<TSubstream>,
 	/// Kademlia requests and answers.
 	kademlia: Kademlia<TSubstream>,
 	/// Periodically identifies the remote.
@@ -66,7 +66,7 @@ impl<TSubstream> Behaviour<TSubstream> where TSubstream: AsyncRead + AsyncWrite 
 			periodic_ping: PeriodicPingBehaviour::new(),
 			ping_listen: PingListenBehaviour::new(),
 			limiter: ConnecLimitBehaviour::new(config),
-			custom_protocols: CustomProtosBehaviour::new(protocols),
+			custom_protocols: CustomProtos::new(protocols),
 			kademlia: Kademlia::new(local_peer_id),
 			periodic_identify: PeriodicIdentifyBehaviour::new(),
 			//identify_listen: IdentifyListen::new(id_info),
@@ -139,7 +139,7 @@ impl<TSubstream> Behaviour<TSubstream> where TSubstream: AsyncRead + AsyncWrite 
 impl<TSubstream> Behaviour<TSubstream> where TSubstream: AsyncRead + AsyncWrite {
 	fn on_custom<TTopology>(
 		&mut self,
-		event: <CustomProtosBehaviour<TSubstream> as NetworkBehaviour<TTopology>>::OutEvent,
+		event: <CustomProtos<TSubstream> as NetworkBehaviour<TTopology>>::OutEvent,
 	) {
 		self.events.push(event);
 	}

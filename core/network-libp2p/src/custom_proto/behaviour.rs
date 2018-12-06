@@ -26,7 +26,7 @@ use std::marker::PhantomData;
 use tokio_io::{AsyncRead, AsyncWrite};
 
 /// Network behaviour that handles opening substreams for custom protocols with other nodes.
-pub struct CustomProtosBehaviour<TSubstream> {
+pub struct CustomProtos<TSubstream> {
 	/// List of protocols to open with peers. Never modified.
 	registered_protocols: RegisteredProtocols,
 
@@ -40,10 +40,10 @@ pub struct CustomProtosBehaviour<TSubstream> {
 	marker: PhantomData<TSubstream>,
 }
 
-impl<TSubstream> CustomProtosBehaviour<TSubstream> {
-	/// Creates a `CustomProtosBehaviour`.
+impl<TSubstream> CustomProtos<TSubstream> {
+	/// Creates a `CustomProtos`.
 	pub fn new(registered_protocols: RegisteredProtocols) -> Self {
-		CustomProtosBehaviour {
+		CustomProtos {
 			registered_protocols,
 			open_protocols: Vec::with_capacity(50),		// TODO: pass capacity to constructor
 			events: SmallVec::new(),
@@ -68,7 +68,7 @@ impl<TSubstream> CustomProtosBehaviour<TSubstream> {
 	}
 }
 
-impl<TSubstream, TTopology> NetworkBehaviour<TTopology> for CustomProtosBehaviour<TSubstream>
+impl<TSubstream, TTopology> NetworkBehaviour<TTopology> for CustomProtos<TSubstream>
 where
 	TSubstream: AsyncRead + AsyncWrite,
 {
