@@ -19,7 +19,7 @@ use crate::custom_proto::upgrade::{RegisteredProtocol, RegisteredProtocols, Regi
 use bytes::Bytes;
 use futures::prelude::*;
 use libp2p::core::{
-	ProtocolsHandler, ProtocolsHandlerEvent,
+	Endpoint, ProtocolsHandler, ProtocolsHandlerEvent,
 	upgrade::{InboundUpgrade, OutboundUpgrade}
 };
 use smallvec::SmallVec;
@@ -63,6 +63,8 @@ pub enum CustomProtosHandlerOut {
 		protocol_id: ProtocolId,
 		/// Version of the protocol that has been opened.
 		version: u8,
+		/// Whether the substream was inbound or outbound.
+		endpoint: Endpoint,
 	},
 
 	/// Closed a custom protocol with the remote.
@@ -104,6 +106,31 @@ where
 			events_queue,
 		}
 	}
+
+	/// Called by `inject_fully_negotiated_inbound` and `inject_fully_negotiated_outbound`.
+	fn inject_fully_negotiated(
+		&mut self,
+		proto: RegisteredProtocolSubstream<TSubstream>,
+		endpoint: Endpoint,
+	) {
+		if self.shutting_down {
+			return;
+		}
+
+		if self.substreams.iter().any(|p| p.protocol_id() == proto.protocol_id()) {
+			// Skipping protocol that's already open.
+			return;
+		}
+
+		let event = CustomProtosHandlerOut::CustomProtocolOpen {
+			protocol_id: proto.protocol_id(),
+			version: proto.protocol_version(),
+			endpoint,
+		};
+
+		self.substreams.push(proto);
+		self.events_queue.push(ProtocolsHandlerEvent::Custom(event));
+	}
 }
 
 impl<TSubstream> ProtocolsHandler for CustomProtosHandler<TSubstream>
@@ -126,22 +153,7 @@ where
 		&mut self,
 		proto: <Self::InboundProtocol as InboundUpgrade<TSubstream>>::Output
 	) {
-		if self.shutting_down {
-			return;
-		}
-
-		if self.substreams.iter().any(|p| p.protocol_id() == proto.protocol_id()) {
-			// Skipping protocol that's already open.
-			return;
-		}
-
-		let event = CustomProtosHandlerOut::CustomProtocolOpen {
-			protocol_id: proto.protocol_id(),
-			version: proto.protocol_version(),
-		};
-
-		self.substreams.push(proto);
-		self.events_queue.push(ProtocolsHandlerEvent::Custom(event));
+		self.inject_fully_negotiated(proto, Endpoint::Listener);
 	}
 
 	#[inline]
@@ -150,8 +162,7 @@ where
 		proto: <Self::OutboundProtocol as OutboundUpgrade<TSubstream>>::Output,
 		_: Self::OutboundOpenInfo
 	) {
-		// The upgrade process is entirely symmetrical.
-		self.inject_fully_negotiated_inbound(proto);
+		self.inject_fully_negotiated(proto, Endpoint::Dialer);
 	}
 
 	fn inject_event(&mut self, message: CustomProtosHandlerIn) {
@@ -164,6 +175,8 @@ where
 					None => {
 						// We are processing a message event before we could report to the outside
 						// that we disconnected from the protocol. This is not an error.
+						trace!(target: "sub-libp2p", "Tried to send message through closed \
+							protocol");
 						return
 					},
 				};

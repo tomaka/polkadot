@@ -16,7 +16,7 @@
 
 use crate::connec_limit::ConnecLimitBehaviour;
 use crate::custom_proto::{CustomProtos, CustomProtosHandlerOut, RegisteredProtocols};
-use crate::{NetworkConfiguration, ProtocolId};
+use crate::{NetworkConfiguration, ProtocolId, topology::NetTopology};
 use bytes::Bytes;
 use futures::prelude::*;
 use libp2p::core::{Multiaddr, PeerId, swarm::NetworkBehaviour, swarm::NetworkBehaviourAction};
@@ -34,6 +34,7 @@ pub struct Behaviour<TSubstream: AsyncRead + AsyncWrite> {
 	/// Respond to incoming pings.
 	ping_listen: PingListen<TSubstream>,
 	/// Enforces disabled and reserved peers, and connection limit.
+	// TODO: not necessary?
 	limiter: ConnecLimitBehaviour<TSubstream>,
 	/// Custom protocols (dot, bbq, sub, etc.).
 	#[behaviour(handler = "on_custom")]
@@ -60,7 +61,7 @@ impl<TSubstream> Behaviour<TSubstream> where TSubstream: AsyncRead + AsyncWrite 
 			periodic_ping: PeriodicPing::new(),
 			ping_listen: PingListen::new(),
 			limiter: ConnecLimitBehaviour::new(config),
-			custom_protocols: CustomProtos::new(protocols),
+			custom_protocols: CustomProtos::new(config, protocols),
 			kademlia: Kademlia::new(local_peer_id),
 			identify: Identify::new(
 				// The agent and protocol versions; maybe we should use something better?
@@ -135,13 +136,13 @@ impl<TSubstream> Behaviour<TSubstream> where TSubstream: AsyncRead + AsyncWrite 
 }
 
 impl<TSubstream> Behaviour<TSubstream> where TSubstream: AsyncRead + AsyncWrite {
-	#[inline]
+	/*#[inline]
 	fn on_custom<TTopology>(
 		&mut self,
 		event: <CustomProtos<TSubstream> as NetworkBehaviour<TTopology>>::OutEvent,
 	) {
 		self.events.push(event);
-	}
+	}*/
 
 	#[inline]
 	fn on_identify<TTopology>(

@@ -16,14 +16,16 @@
 
 use crate::custom_proto::handler::{CustomProtosHandler, CustomProtosHandlerOut, CustomProtosHandlerIn};
 use crate::custom_proto::upgrade::RegisteredProtocols;
-use crate::ProtocolId;
+use crate::{NetworkConfiguration, NonReservedPeerMode, ProtocolId, topology::NetTopology};
 use bytes::Bytes;
+use fnv::FnvHashSet;
 use futures::prelude::*;
 use libp2p::core::swarm::{ConnectedPoint, NetworkBehaviour, NetworkBehaviourAction, PollParameters};
-use libp2p::core::{protocols_handler::ProtocolsHandler, PeerId};
+use libp2p::core::{protocols_handler::ProtocolsHandler, Endpoint, PeerId};
 use smallvec::SmallVec;
-use std::marker::PhantomData;
+use std::{io, marker::PhantomData, time::Duration, time::Instant};
 use tokio_io::{AsyncRead, AsyncWrite};
+use tokio_timer::Delay;
 
 /// Network behaviour that handles opening substreams for custom protocols with other nodes.
 pub struct CustomProtos<TSubstream> {
@@ -31,7 +33,23 @@ pub struct CustomProtos<TSubstream> {
 	registered_protocols: RegisteredProtocols,
 
 	/// List of protocols that we have open.
-	open_protocols: Vec<(PeerId, ProtocolId)>,
+	open_protocols: Vec<(PeerId, ProtocolId, Endpoint)>,
+
+	/// Maximum number of incoming non-reserved connections, taken from the config.
+	max_incoming_connections: usize,
+
+	/// Maximum number of outgoing non-reserved connections, taken from the config.
+	max_outgoing_connections: usize,
+
+	/// If true, only reserved peers can connect. TODO: shouldn't be here?
+	reserved_only: bool,
+
+	/// List of the IDs of the reserved peers. We always try to maintain a connection these peers.
+	reserved_peers: FnvHashSet<PeerId>,
+
+	/// When this delay expires, we need to synchronize our active connectons with the
+	/// network topology.
+	next_connect_to_nodes: Delay,
 
 	/// Events to produce from `poll()`.
 	events: SmallVec<[NetworkBehaviourAction<CustomProtosHandlerIn, (PeerId, CustomProtosHandlerOut)>; 4]>,
@@ -42,10 +60,15 @@ pub struct CustomProtos<TSubstream> {
 
 impl<TSubstream> CustomProtos<TSubstream> {
 	/// Creates a `CustomProtos`.
-	pub fn new(registered_protocols: RegisteredProtocols) -> Self {
+	pub fn new(config: &NetworkConfiguration, registered_protocols: RegisteredProtocols) -> Self {
 		CustomProtos {
 			registered_protocols,
+			max_incoming_connections: config.in_peers as usize,
+			max_outgoing_connections: config.out_peers as usize,
+			reserved_only: config.non_reserved_mode == NonReservedPeerMode::Deny,
+			reserved_peers: Default::default(),
 			open_protocols: Vec::with_capacity(50),		// TODO: pass capacity to constructor
+			next_connect_to_nodes: Delay::new(Instant::now()),
 			events: SmallVec::new(),
 			marker: PhantomData,
 		}
@@ -66,9 +89,50 @@ impl<TSubstream> CustomProtos<TSubstream> {
 			}
 		});
 	}
+
+	/// Updates the attempted connections to nodes.
+	///
+	/// Also updates `next_connect_to_nodes` with the earliest known moment when we need to
+	/// update connections again.
+	fn connect_to_nodes(&mut self, params: &mut PollParameters<NetTopology>) {
+		// Make sure we are connected or connecting to all the reserved nodes.
+		for reserved in self.reserved_peers.iter() {
+			// TODO: only if not connected
+			self.events.push(NetworkBehaviourAction::DialPeer { peer_id: reserved.clone() });
+		}
+
+		// Counter of number of connections to open, decreased when we open one.
+		let mut num_to_open = self.max_outgoing_connections - self.num_outgoing_connections();
+
+		let (to_try, will_change) = params.topology().addrs_to_attempt();
+		for (peer_id, addr) in to_try {
+			if num_to_open == 0 {
+				break;
+			}
+
+			if peer_id == params.local_peer_id() {
+				continue;
+			}
+
+			// TODO: restore
+			/*if self.disabled_peers.contains_key(&peer_id) {
+				continue;
+			}
+
+			// It is possible that we are connected to this peer, but the topology doesn't know
+			// about that because it is an incoming connection.
+			match self.swarm.ensure_connection(peer_id.clone(), addr.clone()) {
+				Ok(true) => (),
+				Ok(false) => num_to_open -= 1,
+				Err(_) => ()
+			}*/
+		}
+
+		self.next_connect_to_nodes.reset(will_change);
+	}
 }
 
-impl<TSubstream, TTopology> NetworkBehaviour<TTopology> for CustomProtos<TSubstream>
+impl<TSubstream> NetworkBehaviour<NetTopology> for CustomProtos<TSubstream>
 where
 	TSubstream: AsyncRead + AsyncWrite,
 {
@@ -83,8 +147,8 @@ where
 	}
 
 	fn inject_disconnected(&mut self, peer_id: &PeerId, _: ConnectedPoint) {
-		if let Some(pos) = self.open_protocols.iter().position(|(p, _)| p == peer_id) {
-			let (_, protocol_id) = self.open_protocols.remove(pos);
+		if let Some(pos) = self.open_protocols.iter().position(|(p, _, _)| p == peer_id) {
+			let (_, protocol_id, _) = self.open_protocols.remove(pos);
 			let event = CustomProtosHandlerOut::CustomProtocolClosed {
 				protocol_id,
 				result: Ok(()),
@@ -100,7 +164,7 @@ where
 	) {
 		match event {
 			CustomProtosHandlerOut::CustomProtocolClosed { ref protocol_id, .. } => {
-				let pos = self.open_protocols.iter().position(|(s, p)| {
+				let pos = self.open_protocols.iter().position(|(s, p, _)| {
 					s == &source && p == protocol_id
 				});
 
@@ -110,11 +174,11 @@ where
 					debug_assert!(false, "Couldn't find protocol in open_protocols");
 				}
 			}
-			CustomProtosHandlerOut::CustomProtocolOpen { ref protocol_id, .. } => {
-				debug_assert!(!self.open_protocols.iter().any(|(s, p)| {
+			CustomProtosHandlerOut::CustomProtocolOpen { ref protocol_id, endpoint, .. } => {
+				debug_assert!(!self.open_protocols.iter().any(|(s, p, _)| {
 					s == &source && p == protocol_id
 				}));
-				self.open_protocols.push((source.clone(), protocol_id.clone()));
+				self.open_protocols.push((source.clone(), protocol_id.clone(), endpoint));
 			}
 			_ => {}
 		}
@@ -124,17 +188,28 @@ where
 
 	fn poll(
 		&mut self,
-		_: &mut PollParameters<TTopology>,
+		params: &mut PollParameters<NetTopology>,
 	) -> Async<
 		NetworkBehaviourAction<
 			<Self::ProtocolsHandler as ProtocolsHandler>::InEvent,
 			Self::OutEvent,
 		>,
 	> {
-		if !self.events.is_empty() {
-			Async::Ready(self.events.remove(0))
-		} else {
-			Async::NotReady
+		loop {
+			match self.next_connect_to_nodes.poll() {
+				Ok(Async::Ready(())) => self.connect_to_nodes(params),
+				Ok(Async::NotReady) => break,
+				Err(err) => {
+					warn!(target: "sub-libp2p", "Connect-to-nodes timer errored: {:?}", err);
+					break;
+				}
+			}
 		}
+
+		if !self.events.is_empty() {
+			return Async::Ready(self.events.remove(0));
+		}
+
+		Async::NotReady
 	}
 }
