@@ -82,6 +82,9 @@ pub enum CustomProtosHandlerOut {
 		/// Data that has been received.
 		data: Bytes,
 	},
+
+	/// Signals that the peer is useless.
+	UselessNode,
 }
 
 impl<TSubstream> CustomProtosHandler<TSubstream>
@@ -194,6 +197,7 @@ where
 		// Right now if the remote doesn't support one of the custom protocols, we shut down the
 		// entire connection. This is a hack-ish solution to the problem where we connect to nodes
 		// that support libp2p but not the testnet that we want.
+		self.events_queue.push(ProtocolsHandlerEvent::Custom(CustomProtosHandlerOut::UselessNode));
 		self.shutdown();
 	}
 

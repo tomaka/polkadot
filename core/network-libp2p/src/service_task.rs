@@ -17,7 +17,7 @@
 use crate::{behaviour::Behaviour, custom_proto::CustomProtosHandlerOut, secret::obtain_private_key, transport};
 use bytes::Bytes;
 use custom_proto::{RegisteredProtocol, RegisteredProtocols};
-use fnv::{FnvHashMap, FnvHashSet};
+use fnv::FnvHashMap;
 use futures::{prelude::*, Stream};
 use libp2p::{Multiaddr, PeerId};
 use libp2p::core::{Swarm, nodes::Substream, transport::boxed::Boxed, muxing::StreamMuxerBox};
@@ -27,7 +27,7 @@ use std::io::{Error as IoError, ErrorKind as IoErrorKind};
 use std::net::SocketAddr;
 use std::path::Path;
 use std::time::{Duration, Instant};
-use topology::{DisconnectReason, NetTopology};
+use topology::NetTopology;
 use tokio_timer::Interval;
 use {Error, ErrorKind, NetworkConfiguration, NodeIndex, ProtocolId, parse_str_addr};
 
@@ -48,21 +48,24 @@ where TProtos: IntoIterator<Item = RegisteredProtocol> {
 	let local_peer_id = local_public_key.clone().into_peer_id();
 
 	// Initialize the topology of the network.
-	let topology = if let Some(ref path) = config.net_config_path {
+	let mut topology = if let Some(ref path) = config.net_config_path {
 		let path = Path::new(path).join(NODES_FILE);
 		debug!(target: "sub-libp2p", "Initializing peer store for JSON file {:?}", path);
-		NetTopology::from_file(path)
+		NetTopology::from_file(local_public_key, path)
 	} else {
 		debug!(target: "sub-libp2p", "No peers file configured ; peers won't be saved");
-		NetTopology::memory()
+		NetTopology::memory(local_public_key)
 	};
+
+	// Register the external addresses provided by the user as our own.
+	topology.add_external_addrs(config.public_addresses.clone().into_iter());
 
 	// Build the swarm.
 	let mut swarm = {
 		let registered_custom = RegisteredProtocols(registered_custom.into_iter().collect());
 		let behaviour = Behaviour::new(&config, local_peer_id.clone(), registered_custom);
 		let transport = transport::build_transport(local_private_key);
-		Swarm::new(transport, behaviour, topology, local_public_key)
+		Swarm::new(transport, behaviour, topology)
 	};
 
 	// Listen on multiaddresses.
@@ -72,15 +75,9 @@ where TProtos: IntoIterator<Item = RegisteredProtocol> {
 			Err(_) => {
 				warn!(target: "sub-libp2p", "Can't listen on {}, protocol not supported", addr);
 				return Err(ErrorKind::BadProtocol.into())
-			},
+			}
 		}
 	}
-
-	// TODO: restore
-	/*// Register the external addresses provided by the user.
-	for addr in &config.public_addresses {
-		Swarm::add_external_address(&mut swarm, addr.clone());
-	}*/
 
 	// Add the bootstrap nodes to the topology and connect to them.
 	for bootnode in config.boot_nodes.iter() {
@@ -325,36 +322,42 @@ impl Service {
 
 	/// Polls for what happened on the network.
 	fn poll_swarm(&mut self) -> Poll<Option<ServiceEvent>, IoError> {
-		match self.swarm.poll() {
-			Ok(Async::Ready(Some((peer_id, CustomProtosHandlerOut::CustomProtocolOpen { protocol_id, version, .. })))) => {
-				debug!(target: "sub-libp2p", "Opened connection to {:?}", peer_id);
-				let node_index = self.index_of_peer_or_assign(peer_id);
-				Ok(Async::Ready(Some(ServiceEvent::OpenedCustomProtocol {
-					node_index,
-					protocol: protocol_id,
-					version,
-				})))
+		loop {
+			match self.swarm.poll() {
+				Ok(Async::Ready(Some((peer_id, CustomProtosHandlerOut::CustomProtocolOpen { protocol_id, version, .. })))) => {
+					debug!(target: "sub-libp2p", "Opened connection to {:?}", peer_id);
+					let node_index = self.index_of_peer_or_assign(peer_id);
+					break Ok(Async::Ready(Some(ServiceEvent::OpenedCustomProtocol {
+						node_index,
+						protocol: protocol_id,
+						version,
+					})))
+				}
+				Ok(Async::Ready(Some((peer_id, CustomProtosHandlerOut::CustomProtocolClosed { protocol_id, result })))) => {
+					debug!(target: "sub-libp2p", "Connection to {:?} closed: {:?}", peer_id, result);
+					let node_index = self.index_of_peer_or_assign(peer_id);
+					break Ok(Async::Ready(Some(ServiceEvent::ClosedCustomProtocol {
+						node_index,
+						protocol: protocol_id,
+					})))
+				}
+				Ok(Async::Ready(Some((peer_id, CustomProtosHandlerOut::CustomMessage { protocol_id, data })))) => {
+					debug!(target: "sub-libp2p", "Connection to {:?} closed gracefully", peer_id);
+					let node_index = self.index_of_peer_or_assign(peer_id);
+					break Ok(Async::Ready(Some(ServiceEvent::CustomMessage {
+						node_index,
+						protocol_id,
+						data,
+					})))
+				}
+				Ok(Async::Ready(Some((peer_id, CustomProtosHandlerOut::UselessNode)))) => {
+					Swarm::topology_mut(&mut self.swarm).report_useless(&peer_id);
+					continue;
+				}
+				Ok(Async::NotReady) => break Ok(Async::NotReady),
+				Ok(Async::Ready(None)) => unreachable!("The Swarm stream never ends"),
+				Err(_) => unreachable!("The Swarm never errors"),
 			}
-			Ok(Async::Ready(Some((peer_id, CustomProtosHandlerOut::CustomProtocolClosed { protocol_id, result })))) => {
-				debug!(target: "sub-libp2p", "Connection to {:?} closed: {:?}", peer_id, result);
-				let node_index = self.index_of_peer_or_assign(peer_id);
-				Ok(Async::Ready(Some(ServiceEvent::ClosedCustomProtocol {
-					node_index,
-					protocol: protocol_id,
-				})))
-			}
-			Ok(Async::Ready(Some((peer_id, CustomProtosHandlerOut::CustomMessage { protocol_id, data })))) => {
-				debug!(target: "sub-libp2p", "Connection to {:?} closed gracefully", peer_id);
-				let node_index = self.index_of_peer_or_assign(peer_id);
-				Ok(Async::Ready(Some(ServiceEvent::CustomMessage {
-					node_index,
-					protocol_id,
-					data,
-				})))
-			}
-			Ok(Async::NotReady) => Ok(Async::NotReady),
-			Ok(Async::Ready(None)) => unreachable!("The Swarm stream never ends"),
-			Err(_) => unreachable!("The Swarm never errors"),
 		}
 	}
 

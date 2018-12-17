@@ -44,7 +44,6 @@ extern crate log;
 extern crate assert_matches;
 
 mod behaviour;
-mod connec_limit;
 mod custom_proto;
 mod error;
 mod secret;

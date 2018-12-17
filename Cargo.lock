@@ -1134,28 +1134,27 @@ dependencies = [
 [[package]]
 name = "libp2p"
 version = "0.1.0"
-source = "git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725#6cc8103d0bdf338924e39e1fb4758041638f5725"
+source = "git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256#9be5ab400540cb4a0f14efda927118fc2b88a256"
 dependencies = [
  "bytes 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "libp2p-core-derive 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "libp2p-dns 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "libp2p-floodsub 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "libp2p-identify 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "libp2p-kad 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "libp2p-mdns 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "libp2p-mplex 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "libp2p-ping 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "libp2p-plaintext 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "libp2p-ratelimit 0.1.1 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "libp2p-secio 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "libp2p-tcp-transport 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "libp2p-transport-timeout 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "libp2p-uds 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "libp2p-yamux 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "multiaddr 0.3.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "multihash 0.8.1-pre (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "libp2p-core-derive 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "libp2p-dns 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "libp2p-floodsub 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "libp2p-identify 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "libp2p-kad 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "libp2p-mdns 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "libp2p-mplex 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "libp2p-ping 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "libp2p-plaintext 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "libp2p-ratelimit 0.1.1 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "libp2p-secio 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "libp2p-tcp 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "libp2p-uds 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "libp2p-yamux 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "parity-multiaddr 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "parity-multihash 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "stdweb 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-codec 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-executor 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1165,20 +1164,20 @@ dependencies = [
 [[package]]
 name = "libp2p-core"
 version = "0.1.0"
-source = "git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725#6cc8103d0bdf338924e39e1fb4758041638f5725"
+source = "git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256#9be5ab400540cb4a0f14efda927118fc2b88a256"
 dependencies = [
  "bs58 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "bytes 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "multiaddr 0.3.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "multihash 0.8.1-pre (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "multistream-select 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "multistream-select 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "parity-multiaddr 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "parity-multihash 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "parking_lot 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "protobuf 2.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "quick-error 1.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "rw-stream-sink 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "rw-stream-sink 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "smallvec 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-executor 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-io 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1189,7 +1188,7 @@ dependencies = [
 [[package]]
 name = "libp2p-core-derive"
 version = "0.1.0"
-source = "git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725#6cc8103d0bdf338924e39e1fb4758041638f5725"
+source = "git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256#9be5ab400540cb4a0f14efda927118fc2b88a256"
 dependencies = [
  "quote 0.6.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "syn 0.15.22 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1198,12 +1197,12 @@ dependencies = [
 [[package]]
 name = "libp2p-dns"
 version = "0.1.0"
-source = "git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725#6cc8103d0bdf338924e39e1fb4758041638f5725"
+source = "git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256#9be5ab400540cb4a0f14efda927118fc2b88a256"
 dependencies = [
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "multiaddr 0.3.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "parity-multiaddr 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "tokio-dns-unofficial 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-io 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -1211,14 +1210,14 @@ dependencies = [
 [[package]]
 name = "libp2p-floodsub"
 version = "0.1.0"
-source = "git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725#6cc8103d0bdf338924e39e1fb4758041638f5725"
+source = "git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256#9be5ab400540cb4a0f14efda927118fc2b88a256"
 dependencies = [
  "bs58 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "bytes 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "cuckoofilter 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "protobuf 2.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "smallvec 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1230,14 +1229,14 @@ dependencies = [
 [[package]]
 name = "libp2p-identify"
 version = "0.1.0"
-source = "git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725#6cc8103d0bdf338924e39e1fb4758041638f5725"
+source = "git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256#9be5ab400540cb4a0f14efda927118fc2b88a256"
 dependencies = [
  "bytes 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "multiaddr 0.3.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "parity-multiaddr 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "parking_lot 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "protobuf 2.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "smallvec 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1251,7 +1250,7 @@ dependencies = [
 [[package]]
 name = "libp2p-kad"
 version = "0.1.0"
-source = "git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725#6cc8103d0bdf338924e39e1fb4758041638f5725"
+source = "git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256#9be5ab400540cb4a0f14efda927118fc2b88a256"
 dependencies = [
  "arrayvec 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "bigint 4.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1259,12 +1258,12 @@ dependencies = [
  "bytes 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "libp2p-identify 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "libp2p-ping 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "libp2p-identify 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "libp2p-ping 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "multiaddr 0.3.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "multihash 0.8.1-pre (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "parity-multiaddr 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "parity-multihash 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "parking_lot 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "protobuf 2.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1279,29 +1278,32 @@ dependencies = [
 [[package]]
 name = "libp2p-mdns"
 version = "0.1.0"
-source = "git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725#6cc8103d0bdf338924e39e1fb4758041638f5725"
+source = "git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256#9be5ab400540cb4a0f14efda927118fc2b88a256"
 dependencies = [
  "data-encoding 2.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "dns-parser 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "multiaddr 0.3.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "net2 0.2.33 (registry+https://github.com/rust-lang/crates.io-index)",
+ "parity-multiaddr 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "rand 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "smallvec 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-io 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-reactor 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-timer 0.2.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-udp 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "void 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "libp2p-mplex"
 version = "0.1.0"
-source = "git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725#6cc8103d0bdf338924e39e1fb4758041638f5725"
+source = "git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256#9be5ab400540cb4a0f14efda927118fc2b88a256"
 dependencies = [
  "bytes 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "parking_lot 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-codec 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1312,15 +1314,15 @@ dependencies = [
 [[package]]
 name = "libp2p-ping"
 version = "0.1.0"
-source = "git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725#6cc8103d0bdf338924e39e1fb4758041638f5725"
+source = "git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256#9be5ab400540cb4a0f14efda927118fc2b88a256"
 dependencies = [
  "arrayvec 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "bytes 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "multiaddr 0.3.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "multistream-select 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "multistream-select 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "parity-multiaddr 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "parking_lot 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-codec 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1332,22 +1334,21 @@ dependencies = [
 [[package]]
 name = "libp2p-plaintext"
 version = "0.1.0"
-source = "git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725#6cc8103d0bdf338924e39e1fb4758041638f5725"
+source = "git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256#9be5ab400540cb4a0f14efda927118fc2b88a256"
 dependencies = [
- "bytes 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "void 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "libp2p-ratelimit"
 version = "0.1.1"
-source = "git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725#6cc8103d0bdf338924e39e1fb4758041638f5725"
+source = "git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256#9be5ab400540cb4a0f14efda927118fc2b88a256"
 dependencies = [
  "aio-limited 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-executor 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-io 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1356,7 +1357,7 @@ dependencies = [
 [[package]]
 name = "libp2p-secio"
 version = "0.1.0"
-source = "git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725#6cc8103d0bdf338924e39e1fb4758041638f5725"
+source = "git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256#9be5ab400540cb4a0f14efda927118fc2b88a256"
 dependencies = [
  "aes-ctr 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "asn1_der 0.5.10 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1365,12 +1366,12 @@ dependencies = [
  "ed25519-dalek 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "hmac 0.6.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "protobuf 2.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "ring 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "rw-stream-sink 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "rw-stream-sink 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "secp256k1 0.11.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "sha2 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "stdweb 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1380,50 +1381,38 @@ dependencies = [
 ]
 
 [[package]]
-name = "libp2p-tcp-transport"
+name = "libp2p-tcp"
 version = "0.1.0"
-source = "git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725#6cc8103d0bdf338924e39e1fb4758041638f5725"
+source = "git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256#9be5ab400540cb4a0f14efda927118fc2b88a256"
 dependencies = [
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "multiaddr 0.3.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "parity-multiaddr 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "tk-listen 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-io 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-tcp 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
-name = "libp2p-transport-timeout"
-version = "0.1.0"
-source = "git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725#6cc8103d0bdf338924e39e1fb4758041638f5725"
-dependencies = [
- "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio-timer 0.2.7 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "libp2p-uds"
 version = "0.1.0"
-source = "git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725#6cc8103d0bdf338924e39e1fb4758041638f5725"
+source = "git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256#9be5ab400540cb4a0f14efda927118fc2b88a256"
 dependencies = [
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "multiaddr 0.3.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "parity-multiaddr 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "tokio-uds 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "libp2p-yamux"
 version = "0.1.0"
-source = "git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725#6cc8103d0bdf338924e39e1fb4758041638f5725"
+source = "git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256#9be5ab400540cb4a0f14efda927118fc2b88a256"
 dependencies = [
- "bytes 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-io 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "yamux 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1572,36 +1561,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "multiaddr"
-version = "0.3.0"
-source = "git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725#6cc8103d0bdf338924e39e1fb4758041638f5725"
-dependencies = [
- "arrayref 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "bs58 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "byteorder 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "data-encoding 2.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "multihash 0.8.1-pre (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
- "serde 1.0.80 (registry+https://github.com/rust-lang/crates.io-index)",
- "unsigned-varint 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "multihash"
-version = "0.8.1-pre"
-source = "git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725#6cc8103d0bdf338924e39e1fb4758041638f5725"
-dependencies = [
- "blake2 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "rand 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "sha1 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "sha2 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "tiny-keccak 1.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "unsigned-varint 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "multistream-select"
 version = "0.1.0"
-source = "git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725#6cc8103d0bdf338924e39e1fb4758041638f5725"
+source = "git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256#9be5ab400540cb4a0f14efda927118fc2b88a256"
 dependencies = [
  "bytes 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1883,6 +1845,33 @@ dependencies = [
  "ring 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rust-crypto 0.2.36 (registry+https://github.com/rust-lang/crates.io-index)",
  "tiny-keccak 1.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "parity-multiaddr"
+version = "0.1.0"
+source = "git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256#9be5ab400540cb4a0f14efda927118fc2b88a256"
+dependencies = [
+ "arrayref 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bs58 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "byteorder 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "data-encoding 2.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "parity-multihash 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
+ "serde 1.0.80 (registry+https://github.com/rust-lang/crates.io-index)",
+ "unsigned-varint 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "parity-multihash"
+version = "0.1.0"
+source = "git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256#9be5ab400540cb4a0f14efda927118fc2b88a256"
+dependencies = [
+ "blake2 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rand 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sha1 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sha2 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tiny-keccak 1.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "unsigned-varint 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -2362,7 +2351,7 @@ dependencies = [
 [[package]]
 name = "rw-stream-sink"
 version = "0.1.0"
-source = "git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725#6cc8103d0bdf338924e39e1fb4758041638f5725"
+source = "git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256#9be5ab400540cb4a0f14efda927118fc2b88a256"
 dependencies = [
  "bytes 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3311,7 +3300,7 @@ dependencies = [
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.43 (registry+https://github.com/rust-lang/crates.io-index)",
- "libp2p 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)",
+ "libp2p 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "parity-bytes 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "parking_lot 0.5.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -4380,23 +4369,22 @@ dependencies = [
 "checksum lazycell 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ddba4c30a78328befecec92fc94970e53b3ae385827d28620f0f5bb2493081e0"
 "checksum libc 0.2.43 (registry+https://github.com/rust-lang/crates.io-index)" = "76e3a3ef172f1a0b9a9ff0dd1491ae5e6c948b94479a3021819ba7d860c8645d"
 "checksum libloading 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)" = "9c3ad660d7cb8c5822cd83d10897b0f1f1526792737a179e73896152f85b88c2"
-"checksum libp2p 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)" = "<none>"
-"checksum libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)" = "<none>"
-"checksum libp2p-core-derive 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)" = "<none>"
-"checksum libp2p-dns 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)" = "<none>"
-"checksum libp2p-floodsub 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)" = "<none>"
-"checksum libp2p-identify 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)" = "<none>"
-"checksum libp2p-kad 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)" = "<none>"
-"checksum libp2p-mdns 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)" = "<none>"
-"checksum libp2p-mplex 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)" = "<none>"
-"checksum libp2p-ping 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)" = "<none>"
-"checksum libp2p-plaintext 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)" = "<none>"
-"checksum libp2p-ratelimit 0.1.1 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)" = "<none>"
-"checksum libp2p-secio 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)" = "<none>"
-"checksum libp2p-tcp-transport 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)" = "<none>"
-"checksum libp2p-transport-timeout 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)" = "<none>"
-"checksum libp2p-uds 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)" = "<none>"
-"checksum libp2p-yamux 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)" = "<none>"
+"checksum libp2p 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)" = "<none>"
+"checksum libp2p-core 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)" = "<none>"
+"checksum libp2p-core-derive 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)" = "<none>"
+"checksum libp2p-dns 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)" = "<none>"
+"checksum libp2p-floodsub 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)" = "<none>"
+"checksum libp2p-identify 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)" = "<none>"
+"checksum libp2p-kad 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)" = "<none>"
+"checksum libp2p-mdns 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)" = "<none>"
+"checksum libp2p-mplex 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)" = "<none>"
+"checksum libp2p-ping 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)" = "<none>"
+"checksum libp2p-plaintext 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)" = "<none>"
+"checksum libp2p-ratelimit 0.1.1 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)" = "<none>"
+"checksum libp2p-secio 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)" = "<none>"
+"checksum libp2p-tcp 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)" = "<none>"
+"checksum libp2p-uds 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)" = "<none>"
+"checksum libp2p-yamux 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)" = "<none>"
 "checksum linked-hash-map 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "70fb39025bc7cdd76305867c4eccf2f2dcf6e9a57f5b21a93e1c2d86cd03ec9e"
 "checksum local-encoding 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "e1ceb20f39ff7ae42f3ff9795f3986b1daad821caaa1e1732a0944103a5a1a66"
 "checksum lock_api 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)" = "775751a3e69bde4df9b38dd00a1b5d6ac13791e4223d4a0506577f0dd27cfb7a"
@@ -4413,9 +4401,7 @@ dependencies = [
 "checksum mio-extras 2.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "46e73a04c2fa6250b8d802134d56d554a9ec2922bf977777c805ea5def61ce40"
 "checksum mio-uds 0.6.7 (registry+https://github.com/rust-lang/crates.io-index)" = "966257a94e196b11bb43aca423754d87429960a768de9414f3691d6957abf125"
 "checksum miow 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "8c1f2f3b1cf331de6896aabf6e9d55dca90356cc9960cca7eaaf408a355ae919"
-"checksum multiaddr 0.3.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)" = "<none>"
-"checksum multihash 0.8.1-pre (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)" = "<none>"
-"checksum multistream-select 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)" = "<none>"
+"checksum multistream-select 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)" = "<none>"
 "checksum names 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ef320dab323286b50fb5cdda23f61c796a72a89998ab565ca32525c5c556f2da"
 "checksum net2 0.2.33 (registry+https://github.com/rust-lang/crates.io-index)" = "42550d9fb7b6684a6d404d9fa7250c2eb2646df731d1c06afc06dcee9e1bcf88"
 "checksum nix 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d37e713a259ff641624b6cb20e3b12b2952313ba36b6823c0f16e6cfd9e5de17"
@@ -4436,6 +4422,8 @@ dependencies = [
 "checksum parity-codec 2.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "dca389ea5e1632c89b2ce54f7e2b4a8a8c9d278042222a91e0bf95451218cb4c"
 "checksum parity-codec-derive 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ffa42c2cb493b60b12c75b26e8c94cb734af4df4d7f2cc229dc04c1953dac189"
 "checksum parity-crypto 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "c1117f6574377d21309bfa1f7d69ff734120685d92b02c3f362b122585758840"
+"checksum parity-multiaddr 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)" = "<none>"
+"checksum parity-multihash 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)" = "<none>"
 "checksum parity-rocksdb 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)" = "cd55d2d6d6000ec99f021cf52c9acc7d2a402e14f95ced4c5de230696fabe00b"
 "checksum parity-rocksdb-sys 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)" = "0e59eda423021494a6cf1be74f6989add403f53157409993f794e17b123cab51"
 "checksum parity-snappy-sys 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "c2086caac40c79289cb70d7e1c64f5888e1c53f5d38399d3e95101493739f423"
@@ -4491,7 +4479,7 @@ dependencies = [
 "checksum rustc-hex 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "403bb3a286107a04825a5f82e1270acc1e14028d3d554d7a1e08914549575ab8"
 "checksum rustc-serialize 0.3.24 (registry+https://github.com/rust-lang/crates.io-index)" = "dcf128d1287d2ea9d80910b5f1120d0b8eede3fbf1abe91c40d39ea7d51e6fda"
 "checksum rustc_version 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)" = "138e3e0acb6c9fb258b19b67cb8abd63c00679d2851805ea151465464fe9030a"
-"checksum rw-stream-sink 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=6cc8103d0bdf338924e39e1fb4758041638f5725)" = "<none>"
+"checksum rw-stream-sink 0.1.0 (git+https://github.com/tomaka/libp2p-rs?rev=9be5ab400540cb4a0f14efda927118fc2b88a256)" = "<none>"
 "checksum ryu 0.2.7 (registry+https://github.com/rust-lang/crates.io-index)" = "eb9e9b8cde282a9fe6a42dd4681319bfb63f121b8a8ee9439c6f4107e58a46f7"
 "checksum safe-mix 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "7f7bf422d23a88c16d5090d455f182bc99c60af4df6a345c63428acf5129e347"
 "checksum scopeguard 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)" = "94258f53601af11e6a49f722422f6e3425c52b06245a5cf9bc09908b174f5e27"

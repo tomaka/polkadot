@@ -14,35 +14,30 @@
 // You should have received a copy of the GNU General Public License
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
-use crate::connec_limit::ConnecLimitBehaviour;
 use crate::custom_proto::{CustomProtos, CustomProtosHandlerOut, RegisteredProtocols};
-use crate::{NetworkConfiguration, ProtocolId, topology::NetTopology};
+use crate::{NetworkConfiguration, ProtocolId};
 use bytes::Bytes;
 use futures::prelude::*;
-use libp2p::core::{Multiaddr, PeerId, swarm::NetworkBehaviour, swarm::NetworkBehaviourAction};
+use libp2p::core::{Multiaddr, PeerId, swarm::NetworkBehaviourAction, swarm::NetworkBehaviourEventProcess};
 use libp2p::identify::{Identify, IdentifyEvent};
-use libp2p::kad::Kademlia;
+use libp2p::kad::{Kademlia, KademliaOut};
 use libp2p::ping::{PeriodicPing, PingListen};
 use libp2p::tokio_io::{AsyncRead, AsyncWrite};
+use void;
 
 /// General behaviour of the network.
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "BehaviourEvent", poll_method = "poll")]
-pub struct Behaviour<TSubstream: AsyncRead + AsyncWrite> {
+pub struct Behaviour<TSubstream: AsyncRead + AsyncWrite> {		// TODO: remove bounds
 	/// Periodically ping nodes, and close the connection if it's unresponsive.
 	periodic_ping: PeriodicPing<TSubstream>,
 	/// Respond to incoming pings.
 	ping_listen: PingListen<TSubstream>,
-	/// Enforces disabled and reserved peers, and connection limit.
-	// TODO: not necessary?
-	limiter: ConnecLimitBehaviour<TSubstream>,
 	/// Custom protocols (dot, bbq, sub, etc.).
-	#[behaviour(handler = "on_custom")]
 	custom_protocols: CustomProtos<TSubstream>,
 	/// Kademlia requests and answers.
 	kademlia: Kademlia<TSubstream>,
 	/// Periodically identifies the remote and responds to incoming requests.
-	#[behaviour(handler = "on_identify")]
 	identify: Identify<TSubstream>,
 
 	/// Queue of events to produce for the outside.
@@ -60,7 +55,6 @@ impl<TSubstream> Behaviour<TSubstream> where TSubstream: AsyncRead + AsyncWrite 
 		Behaviour {
 			periodic_ping: PeriodicPing::new(),
 			ping_listen: PingListen::new(),
-			limiter: ConnecLimitBehaviour::new(config),
 			custom_protocols: CustomProtos::new(config, protocols),
 			kademlia: Kademlia::new(local_peer_id),
 			identify: Identify::new(
@@ -94,7 +88,7 @@ impl<TSubstream> Behaviour<TSubstream> where TSubstream: AsyncRead + AsyncWrite 
 
 	/// Try to add a reserved peer.
 	pub fn add_reserved_peer(&mut self, peer_id: PeerId, addr: Multiaddr) {
-		self.limiter.add_reserved_peer(peer_id, addr)
+		self.custom_protocols.add_reserved_peer(peer_id, addr)
 	}
 
 	/// Try to remove a reserved peer.
@@ -102,17 +96,17 @@ impl<TSubstream> Behaviour<TSubstream> where TSubstream: AsyncRead + AsyncWrite 
 	/// If we are in reserved mode and we were connected to a node with this peer ID, then this
 	/// method will disconnect it and return its index.
 	pub fn remove_reserved_peer(&mut self, peer_id: PeerId) {
-		self.limiter.remove_reserved_peer(peer_id)
+		self.custom_protocols.remove_reserved_peer(peer_id)
 	}
 
 	/// Start accepting all peers again if we weren't.
 	pub fn accept_unreserved_peers(&mut self) {
-		self.limiter.accept_unreserved_peers()
+		self.custom_protocols.accept_unreserved_peers()
 	}
 
 	/// Start refusing non-reserved nodes. Returns the list of nodes that have been disconnected.
 	pub fn deny_unreserved_peers(&mut self) {
-		self.limiter.deny_unreserved_peers()
+		self.custom_protocols.deny_unreserved_peers()
 	}
 
 	/// Disconnects a peer and bans it for a little while.
@@ -120,7 +114,8 @@ impl<TSubstream> Behaviour<TSubstream> where TSubstream: AsyncRead + AsyncWrite 
 	/// Same as `drop_node`, except that the same peer will not be able to reconnect later.
 	#[inline]
 	pub fn ban_node(&mut self, peer_id: PeerId) {
-		self.limiter.ban_node(peer_id);
+		// FIXME: restore
+		// self.custom_protocols.ban_node(peer_id);
 	}
 
 	/// Disconnects a peer.
@@ -131,28 +126,46 @@ impl<TSubstream> Behaviour<TSubstream> where TSubstream: AsyncRead + AsyncWrite 
 	/// Has no effect if we're not connected to the `PeerId`.
 	#[inline]
 	pub fn drop_node(&mut self, peer_id: &PeerId) {
-		self.limiter.drop_node(&peer_id);
+		// FIXME: restore
+		// self.custom_protocols.drop_node(&peer_id);
 	}
 }
 
-impl<TSubstream> Behaviour<TSubstream> where TSubstream: AsyncRead + AsyncWrite {
-	/*#[inline]
-	fn on_custom<TTopology>(
-		&mut self,
-		event: <CustomProtos<TSubstream> as NetworkBehaviour<TTopology>>::OutEvent,
-	) {
-		self.events.push(event);
-	}*/
-
-	#[inline]
-	fn on_identify<TTopology>(
-		&mut self,
-		event: <Identify<TSubstream> as NetworkBehaviour<TTopology>>::OutEvent,
-	) {
-		let IdentifyEvent::Identified { peer_id, info, .. } = event;
-		trace!(target: "sub-libp2p", "Identified {:?} => {:?}", peer_id, info);
+impl<TSubstream> NetworkBehaviourEventProcess<void::Void> for Behaviour<TSubstream>
+where TSubstream: AsyncRead + AsyncWrite {		// TODO: remove bounds
+	fn inject_event(&mut self, event: void::Void) {
+		void::unreachable(event)
 	}
+}
 
+impl<TSubstream> NetworkBehaviourEventProcess<(PeerId, CustomProtosHandlerOut)> for Behaviour<TSubstream>
+where TSubstream: AsyncRead + AsyncWrite {		// TODO: remove bounds
+	fn inject_event(&mut self, event: (PeerId, CustomProtosHandlerOut)) {
+		self.events.push(event);
+	}
+}
+
+impl<TSubstream> NetworkBehaviourEventProcess<IdentifyEvent> for Behaviour<TSubstream>
+where TSubstream: AsyncRead + AsyncWrite {		// TODO: remove bounds
+	fn inject_event(&mut self, event: IdentifyEvent) {
+		match event {
+			IdentifyEvent::Identified { peer_id, info, .. } => {
+				trace!(target: "sub-libp2p", "Identified {:?} => {:?}", peer_id, info);
+			}
+			IdentifyEvent::Error { .. } => {}
+		}
+	}
+}
+
+impl<TSubstream> NetworkBehaviourEventProcess<KademliaOut> for Behaviour<TSubstream>
+where TSubstream: AsyncRead + AsyncWrite {		// TODO: remove bounds
+	fn inject_event(&mut self, _event: KademliaOut) {
+		// We only ever use Kademlia for discovering nodes, and nodes discovered by Kademlia are
+		// automatically added to the topology. Therefore we don't need to do anything.
+	}
+}
+
+impl<TSubstream> Behaviour<TSubstream> where TSubstream: AsyncRead + AsyncWrite {		// TODO: remove bounds
 	fn poll<TEv>(&mut self) -> Async<NetworkBehaviourAction<TEv, BehaviourEvent>> {
 		if !self.events.is_empty() {
 			return Async::Ready(NetworkBehaviourAction::GenerateEvent(self.events.remove(0)));

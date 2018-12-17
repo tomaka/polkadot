@@ -16,7 +16,8 @@
 
 use fnv::FnvHashMap;
 use parking_lot::Mutex;
-use libp2p::{Multiaddr, PeerId, core::topology::Topology, multihash::Multihash};
+use libp2p::{Multiaddr, PeerId, core::PublicKey, core::topology::Topology, multihash::Multihash};
+use libp2p::identify::IdentifyTopology;
 use libp2p::kad::{KBucketsPeerId, KadConnectionType, KademliaTopology};
 use serde_json;
 use std::{cmp, fs, iter, vec};
@@ -64,15 +65,16 @@ const MAX_BACKOFF: Duration = Duration::from_secs(30 * 60);
 /// Stores information about the topology of the network.
 #[derive(Debug)]
 pub struct NetTopology {
+	/// The actual storage. Never contains a key for `local_peer_id`.
 	store: FnvHashMap<PeerId, PeerInfo>,
+	/// Optional path to the file that caches the serialized version of `store`.
 	cache_path: Option<PathBuf>,
-}
-
-impl Default for NetTopology {
-	#[inline]
-	fn default() -> NetTopology {
-		NetTopology::memory()
-	}
+	/// Public key of the local node.
+	local_public_key: PublicKey,
+	/// PeerId of the local node. Derived from `local_public_key`.
+	local_peer_id: PeerId,
+	/// Known addresses for the local node to report to the network.
+	external_addresses: Vec<Multiaddr>,
 }
 
 impl NetTopology {
@@ -80,10 +82,14 @@ impl NetTopology {
 	///
 	/// `flush_to_disk()` will be a no-op.
 	#[inline]
-	pub fn memory() -> NetTopology {
+	pub fn memory(local_public_key: PublicKey) -> NetTopology {
+		let local_peer_id = local_public_key.clone().into_peer_id();
 		NetTopology {
 			store: Default::default(),
 			cache_path: None,
+			local_peer_id,
+			local_public_key,
+			external_addresses: Vec::new(),
 		}
 	}
 
@@ -93,12 +99,17 @@ impl NetTopology {
 	/// or contains garbage data, the execution still continues.
 	///
 	/// Calling `flush_to_disk()` in the future writes to the given path.
-	pub fn from_file<P: AsRef<Path>>(path: P) -> NetTopology {
+	pub fn from_file<P: AsRef<Path>>(local_public_key: PublicKey, path: P) -> NetTopology {
 		let path = path.as_ref();
+		let local_peer_id = local_public_key.clone().into_peer_id();
 		debug!(target: "sub-libp2p", "Initializing peer store for JSON file {:?}", path);
+		let store = try_load(path, &local_peer_id);
 		NetTopology {
-			store: try_load(path),
+			store,
 			cache_path: Some(path.to_owned()),
+			local_peer_id,
+			local_public_key,
+			external_addresses: Vec::new(),
 		}
 	}
 
@@ -116,7 +127,7 @@ impl NetTopology {
 		serialize(BufWriter::with_capacity(1024 * 1024, file), &self.store)
 	}
 
-	/// Returns the number of peers in the topology.
+	/// Returns the number of peers in the topology, excluding the local peer.
 	#[inline]
 	pub fn num_peers(&self) -> usize {
 		self.store.len()
@@ -135,33 +146,10 @@ impl NetTopology {
 		});
 	}
 
-	/// Returns the known potential addresses of a peer, ordered by score. Excludes backed-off
-	/// addresses.
-	///
-	/// The boolean associated to each address indicates whether we're connected to it.
-	pub fn addrs_of_peer(&self, peer: &PeerId) -> impl Iterator<Item = (&Multiaddr, bool)> {
-		let peer = if let Some(peer) = self.store.get(peer) {
-			peer
-		} else {
-			// TODO: use an EitherIterator or something
-			return Vec::new().into_iter();
-		};
-
-		let now_st = SystemTime::now();
-		let now_is = Instant::now();
-
-		let mut list = peer.addrs.iter().filter_map(move |addr| {
-			let (score, connected) = addr.score_and_is_connected();
-			if (addr.expires >= now_st && score > 0 && addr.back_off_until < now_is) || connected {
-				Some((score, connected, &addr.addr))
-			} else {
-				None
-			}
-		}).collect::<Vec<_>>();
-		list.sort_by(|a, b| a.0.cmp(&b.0));
-		// TODO: meh, optimize
-		let l = list.into_iter().map(|(_, connec, addr)| (addr, connec)).collect::<Vec<_>>();
-		l.into_iter()
+	/// Add the external addresses that are known for the local node.
+	pub fn add_external_addrs<TIter>(&mut self, addrs: TIter)
+	where TIter: Iterator<Item = Multiaddr> {
+		self.external_addresses.extend(addrs);
 	}
 
 	/// Returns a list of all the known addresses of peers, ordered by the
@@ -242,23 +230,6 @@ impl NetTopology {
 			});
 		}
 	}
-
-	/// Adds addresses that a node says it is listening on.
-	///
-	/// The addresses are most likely to be valid.
-	///
-	/// Returns `true` if the topology has changed in some way. Returns `false` if calling this
-	/// method was a no-op.
-	#[inline]
-	pub fn add_self_reported_listen_addrs<I>(
-		&mut self,
-		peer_id: &PeerId,
-		addrs: I,
-	) -> bool
-		where I: Iterator<Item = Multiaddr> {
-		self.add_discovered_addrs(peer_id, addrs.map(|a| (a, true)))
-	}
-
 
 	/// Inner implementaiton of the `add_*_discovered_addrs` methods.
 	/// Returns `true` if the topology has changed in some way. Returns `false` if calling this
@@ -440,12 +411,11 @@ impl KademliaTopology for NetTopology {
 	type GetProvidersIter = iter::Empty<PeerId>;
 
 	fn add_kad_discovered_address(&mut self, peer: PeerId, addr: Multiaddr, ty: KadConnectionType) {
-		// TODO: correct bool
-		self.add_discovered_addrs(&peer, iter::once((addr, false)));
+		self.add_discovered_addrs(&peer, iter::once((addr, ty == KadConnectionType::Connected)));
 	}
 
 	fn closest_peers(&mut self, target: &Multihash, max: usize) -> Self::ClosestPeersIter {
-		// TODO: temporary ; very inefficient
+		// TODO: very inefficient
 		let mut peers = self.store.keys().cloned().collect::<Vec<_>>();
 		peers.sort_by(|a, b| {
 			b.as_ref().distance_with(target).cmp(&a.as_ref().distance_with(target))
@@ -463,11 +433,56 @@ impl KademliaTopology for NetTopology {
 	}
 }
 
-// TODO: is that a good idea?
+impl IdentifyTopology for NetTopology {
+	#[inline]
+	fn add_identify_discovered_addrs<TIter>(&mut self, peer: &PeerId, addrs: TIter)
+	where
+		TIter: Iterator<Item = Multiaddr>
+	{
+		self.add_discovered_addrs(peer, addrs.map(move |a| (a, true)));
+	}
+}
+
 impl Topology for NetTopology {
 	#[inline]
 	fn addresses_of_peer(&mut self, peer: &PeerId) -> Vec<Multiaddr> {
-		self.addrs_of_peer(peer).map(|(a, _)| a.clone()).collect()
+		if peer == &self.local_peer_id {
+			return self.external_addresses.clone()
+		}
+
+		let peer = if let Some(peer) = self.store.get(peer) {
+			peer
+		} else {
+			return Vec::new()
+		};
+
+		let now_st = SystemTime::now();
+		let now_is = Instant::now();
+
+		let mut list = peer.addrs.iter().filter_map(move |addr| {
+			let (score, connected) = addr.score_and_is_connected();
+			if (addr.expires >= now_st && score > 0 && addr.back_off_until < now_is) || connected {
+				Some((score, &addr.addr))
+			} else {
+				None
+			}
+		}).collect::<Vec<_>>();
+		list.sort_by(|a, b| a.0.cmp(&b.0));
+		// TODO: meh, optimize
+		list.into_iter().map(|(_, addr)| addr.clone()).collect::<Vec<_>>()
+	}
+
+	fn add_local_external_addrs<TIter>(&mut self, addrs: TIter)
+	where TIter: Iterator<Item = Multiaddr> {
+		self.add_external_addrs(addrs)
+	}
+
+	fn local_peer_id(&self) -> &PeerId {
+		&self.local_peer_id
+	}
+
+	fn local_public_key(&self) -> &PublicKey {
+		&self.local_public_key
 	}
 }
 
@@ -637,9 +652,10 @@ impl<'a> From<&'a Addr> for SerializedAddr {
 }
 
 /// Attempts to load storage from a file.
+/// Ignores any entry equal to `local_peer_id`.
 /// Deletes the file and returns an empty map if the file doesn't exist, cannot be opened
 /// or is corrupted.
-fn try_load(path: impl AsRef<Path>) -> FnvHashMap<PeerId, PeerInfo> {
+fn try_load(path: impl AsRef<Path>, local_peer_id: &PeerId) -> FnvHashMap<PeerId, PeerInfo> {
 	let path = path.as_ref();
 	if !path.exists() {
 		debug!(target: "sub-libp2p", "Peer storage file {:?} doesn't exist", path);
@@ -683,7 +699,8 @@ fn try_load(path: impl AsRef<Path>) -> FnvHashMap<PeerId, PeerInfo> {
 		let data = Cursor::new(first_byte).chain(file);
 		match serde_json::from_reader::<_, serde_json::Value>(data) {
 			Ok(serde_json::Value::Null) => Default::default(),
-			Ok(serde_json::Value::Object(map)) => deserialize_tolerant(map.into_iter()),
+			Ok(serde_json::Value::Object(map)) =>
+				deserialize_tolerant(map.into_iter(), local_peer_id),
 			Ok(_) | Err(_) => {
 				// The `Ok(_)` case means that the file doesn't contain a map.
 				let _ = fs::remove_file(path);
@@ -695,9 +712,10 @@ fn try_load(path: impl AsRef<Path>) -> FnvHashMap<PeerId, PeerInfo> {
 
 /// Attempts to turn a deserialized version of the storage into the final version.
 ///
-/// Skips entries that are invalid.
+/// Skips entries that are invalid or equal to `local_peer_id`.
 fn deserialize_tolerant(
-	iter: impl Iterator<Item = (String, serde_json::Value)>
+	iter: impl Iterator<Item = (String, serde_json::Value)>,
+	local_peer_id: &PeerId
 ) -> FnvHashMap<PeerId, PeerInfo> {
 	let now = Instant::now();
 	let now_systime = SystemTime::now();
@@ -708,6 +726,10 @@ fn deserialize_tolerant(
 			Ok(p) => p,
 			Err(_) => continue,
 		};
+
+		if &peer == local_peer_id {
+			continue;
+		}
 
 		let info: SerializedPeerInfo = match serde_json::from_value(info) {
 			Ok(i) => i,

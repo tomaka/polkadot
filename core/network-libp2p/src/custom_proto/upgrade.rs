@@ -15,7 +15,7 @@
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
 use bytes::Bytes;
-use libp2p::core::{UpgradeInfo, InboundUpgrade, OutboundUpgrade};
+use libp2p::core::{UpgradeInfo, InboundUpgrade, OutboundUpgrade, upgrade::ProtocolName};
 use libp2p::tokio_codec::Framed;
 use std::{collections::VecDeque, io, vec::IntoIter as VecIntoIter};
 use futures::{prelude::*, future, stream};
@@ -168,18 +168,36 @@ where TSubstream: AsyncRead + AsyncWrite,
 }
 
 impl UpgradeInfo for RegisteredProtocol {
-	type NamesIter = VecIntoIter<(Bytes, Self::UpgradeId)>;
-	type UpgradeId = u8;		// Protocol version
+	type Info = RegisteredProtocolName;
+	type InfoIter = VecIntoIter<Self::Info>;
 
 	#[inline]
-	fn protocol_names(&self) -> Self::NamesIter {
+	fn protocol_info(&self) -> Self::InfoIter {
 		// Report each version as an individual protocol.
-		self.supported_versions.iter().map(|&ver| {
-			let num = ver.to_string();
+		self.supported_versions.iter().map(|&version| {
+			let num = version.to_string();
 			let mut name = self.base_name.clone();
 			name.extend_from_slice(num.as_bytes());
-			(name, ver)
+			RegisteredProtocolName {
+				name,
+				version,
+			}
 		}).collect::<Vec<_>>().into_iter()
+	}
+}
+
+/// Implementation of `ProtocolName` for a custom protocol.
+#[derive(Debug, Clone)]
+pub struct RegisteredProtocolName {
+	/// Protocol name, as advertised on the wire.
+	name: Bytes,
+	/// Version number. Stored in string form in `name`, but duplicated here for easier retrieval.
+	version: u8,
+}
+
+impl ProtocolName for RegisteredProtocolName {
+	fn protocol_name(&self) -> &[u8] {
+		&self.name
 	}
 }
 
@@ -188,12 +206,12 @@ where TSubstream: AsyncRead + AsyncWrite,
 {
 	type Output = RegisteredProtocolSubstream<TSubstream>;
 	type Future = future::FutureResult<Self::Output, io::Error>;
-    type Error = io::Error;
+	type Error = io::Error;
 
 	fn upgrade_inbound(
 		self,
 		socket: TSubstream,
-		protocol_version: Self::UpgradeId,
+		info: Self::Info,
 	) -> Self::Future {
 		let framed = Framed::new(socket, UviBytes::default());
 
@@ -203,7 +221,7 @@ where TSubstream: AsyncRead + AsyncWrite,
 			requires_poll_complete: false,
 			inner: framed.fuse(),
 			protocol_id: self.id,
-			protocol_version,
+			protocol_version: info.version,
 		})
 	}
 }
@@ -213,15 +231,15 @@ where TSubstream: AsyncRead + AsyncWrite,
 {
 	type Output = <Self as InboundUpgrade<TSubstream>>::Output;
 	type Future = <Self as InboundUpgrade<TSubstream>>::Future;
-    type Error = <Self as InboundUpgrade<TSubstream>>::Error;
+	type Error = <Self as InboundUpgrade<TSubstream>>::Error;
 
 	fn upgrade_outbound(
 		self,
 		socket: TSubstream,
-		protocol_version: Self::UpgradeId,
+		info: Self::Info,
 	) -> Self::Future {
-        // Upgrades are symmetrical.
-        self.upgrade_inbound(socket, protocol_version)
+		// Upgrades are symmetrical.
+		self.upgrade_inbound(socket, info)
 	}
 }
 
@@ -255,16 +273,37 @@ impl Default for RegisteredProtocols {
 }
 
 impl UpgradeInfo for RegisteredProtocols {
-	type NamesIter = VecIntoIter<(Bytes, Self::UpgradeId)>;
-	type UpgradeId = (usize, <RegisteredProtocol as UpgradeInfo>::UpgradeId);
+	type Info = RegisteredProtocolsName;
+	type InfoIter = VecIntoIter<Self::Info>;
 
-	fn protocol_names(&self) -> Self::NamesIter {
+	#[inline]
+	fn protocol_info(&self) -> Self::InfoIter {
 		// We concat the lists of `RegisteredProtocol::protocol_names` for
 		// each protocol.
 		self.0.iter().enumerate().flat_map(|(n, proto)|
-			UpgradeInfo::protocol_names(proto)
-				.map(move |(name, id)| (name, (n, id)))
+			UpgradeInfo::protocol_info(proto)
+				.map(move |inner| {
+					RegisteredProtocolsName {
+						inner,
+						index: n,
+					}
+				})
 		).collect::<Vec<_>>().into_iter()
+	}
+}
+
+/// Implementation of `ProtocolName` for several custom protocols.
+#[derive(Debug, Clone)]
+pub struct RegisteredProtocolsName {
+	/// Inner registered protocol.
+	inner: RegisteredProtocolName,
+	/// Index of the protocol in the list of registered custom protocols.
+	index: usize,
+}
+
+impl ProtocolName for RegisteredProtocolsName {
+	fn protocol_name(&self) -> &[u8] {
+		self.inner.protocol_name()
 	}
 }
 
@@ -273,19 +312,18 @@ where TSubstream: AsyncRead + AsyncWrite,
 {
 	type Output = <RegisteredProtocol as InboundUpgrade<TSubstream>>::Output;
 	type Future = <RegisteredProtocol as InboundUpgrade<TSubstream>>::Future;
-    type Error = io::Error;
+	type Error = io::Error;
 
 	#[inline]
 	fn upgrade_inbound(
 		self,
 		socket: TSubstream,
-		upgrade_identifier: Self::UpgradeId,
+		info: Self::Info,
 	) -> Self::Future {
-		let (protocol_index, inner_proto_id) = upgrade_identifier;
 		self.0.into_iter()
-			.nth(protocol_index)
+			.nth(info.index)
 			.expect("invalid protocol index ; programmer logic error")
-			.upgrade_inbound(socket, inner_proto_id)
+			.upgrade_inbound(socket, info.inner)
 	}
 }
 
@@ -294,15 +332,15 @@ where TSubstream: AsyncRead + AsyncWrite,
 {
 	type Output = <Self as InboundUpgrade<TSubstream>>::Output;
 	type Future = <Self as InboundUpgrade<TSubstream>>::Future;
-    type Error = <Self as InboundUpgrade<TSubstream>>::Error;
+	type Error = <Self as InboundUpgrade<TSubstream>>::Error;
 
 	#[inline]
 	fn upgrade_outbound(
 		self,
 		socket: TSubstream,
-		upgrade_identifier: Self::UpgradeId,
+		info: Self::Info,
 	) -> Self::Future {
-        // Upgrades are symmetrical.
-		self.upgrade_inbound(socket, upgrade_identifier)
+		// Upgrades are symmetrical.
+		self.upgrade_inbound(socket, info)
 	}
 }
