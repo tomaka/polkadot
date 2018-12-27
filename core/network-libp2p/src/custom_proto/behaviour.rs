@@ -36,6 +36,7 @@ pub struct CustomProtos<TSubstream> {
 	open_protocols: Vec<(PeerId, ProtocolId, Endpoint)>,
 
 	/// Maximum number of incoming non-reserved connections, taken from the config.
+	// TODO: unused
 	max_incoming_connections: usize,
 
 	/// Maximum number of outgoing non-reserved connections, taken from the config.
