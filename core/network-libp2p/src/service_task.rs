@@ -22,7 +22,13 @@ use futures::{prelude::*, Stream};
 use libp2p::{Multiaddr, PeerId};
 use libp2p::core::{Swarm, nodes::Substream, transport::boxed::Boxed, muxing::StreamMuxerBox};
 use libp2p::core::nodes::ConnectedPoint;
+use libp2p::kad::{KadSystem, KadSystemConfig, KadConnecController, KadPeer};
+use libp2p::kad::{KadConnectionType, KadQueryEvent};
+use parking_lot::Mutex;
+use rand;
+use secret::obtain_private_key;
 use std::collections::hash_map::Entry;
+use std::fs;
 use std::io::{Error as IoError, ErrorKind as IoErrorKind};
 use std::net::SocketAddr;
 use std::path::Path;
@@ -42,6 +48,11 @@ pub fn start_service<TProtos>(
 	registered_custom: TProtos,
 ) -> Result<Service, Error>
 where TProtos: IntoIterator<Item = RegisteredProtocol> {
+
+	if let Some(ref path) = config.net_config_path {
+	    fs::create_dir_all(Path::new(path))?;
+	}
+
 	// Private and public keys configuration.
 	let local_private_key = obtain_private_key(&config)?;
 	let local_public_key = local_private_key.to_public_key();
