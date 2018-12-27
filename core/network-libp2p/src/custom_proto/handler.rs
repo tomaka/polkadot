@@ -184,7 +184,7 @@ where
 					},
 				};
 
-				proto.send_message(data.into());
+				proto.send_message(data);
 			},
 		}
 	}

@@ -529,9 +529,9 @@ impl Clone for Addr {
 	fn clone(&self) -> Addr {
 		Addr {
 			addr: self.addr.clone(),
-			expires: self.expires.clone(),
-			next_back_off: self.next_back_off.clone(),
-			back_off_until: self.back_off_until.clone(),
+			expires: self.expires,
+			next_back_off: self.next_back_off,
+			back_off_until: self.back_off_until,
 			score: Mutex::new(self.score.lock().clone()),
 		}
 	}
@@ -622,8 +622,8 @@ impl Addr {
 /// Divides a `Duration` with a `Duration`. This exists in the stdlib but isn't stable yet.
 // TODO: remove this function once stable
 fn div_dur_with_dur(a: Duration, b: Duration) -> u32 {
-	let a_ms = a.as_secs() * 1_000_000 + (a.subsec_nanos() / 1_000) as u64;
-	let b_ms = b.as_secs() * 1_000_000 + (b.subsec_nanos() / 1_000) as u64;
+	let a_ms = a.as_secs() * 1_000_000 + a.subsec_micros() as u64;
+	let b_ms = b.as_secs() * 1_000_000 + b.subsec_micros() as u64;
 	(a_ms / b_ms) as u32
 }
 
