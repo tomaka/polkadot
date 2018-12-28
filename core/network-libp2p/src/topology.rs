@@ -414,7 +414,7 @@ impl KademliaTopology for NetTopology {
 		self.add_discovered_addrs(&peer, iter::once((addr, ty == KadConnectionType::Connected)));
 	}
 
-	fn closest_peers(&mut self, target: &Multihash, max: usize) -> Self::ClosestPeersIter {
+	fn closest_peers(&mut self, target: &Multihash, _max: usize) -> Self::ClosestPeersIter {
 		// TODO: very inefficient
 		let mut peers = self.store.keys().cloned().collect::<Vec<_>>();
 		peers.sort_by(|a, b| {
