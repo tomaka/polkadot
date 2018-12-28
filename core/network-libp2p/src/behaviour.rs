@@ -18,12 +18,15 @@ use crate::custom_proto::{CustomProtos, CustomProtosHandlerOut, RegisteredProtoc
 use crate::{NetworkConfiguration, ProtocolId};
 use bytes::Bytes;
 use futures::prelude::*;
-use libp2p::core::{Multiaddr, PeerId, swarm::NetworkBehaviourAction, swarm::NetworkBehaviourEventProcess};
+use libp2p::core::{Multiaddr, PeerId, ProtocolsHandler};
+use libp2p::core::swarm::{ConnectedPoint, NetworkBehaviour, NetworkBehaviourAction};
+use libp2p::core::swarm::{NetworkBehaviourEventProcess, PollParameters};
 use libp2p::identify::{Identify, IdentifyEvent};
-use libp2p::kad::{Kademlia, KademliaOut};
+use libp2p::kad::{Kademlia, KademliaOut, KademliaTopology};
 use libp2p::ping::{PeriodicPing, PingListen};
-use std::time::{Duration, Instant};
-use tokio_timer::Interval;
+use std::{cmp, time::Duration, time::Instant};
+use tokio_io::{AsyncRead, AsyncWrite};
+use tokio_timer::Delay;
 use void;
 
 /// General behaviour of the network.
@@ -36,14 +39,11 @@ pub struct Behaviour<TSubstream> {
 	ping_listen: PingListen<TSubstream>,
 	/// Custom protocols (dot, bbq, sub, etc.).
 	custom_protocols: CustomProtos<TSubstream>,
-	/// Kademlia requests and answers.
-	kademlia: Kademlia<TSubstream>,
+	/// Discovers nodes of the network. Defined below.
+	discovery: DiscoveryBehaviour<TSubstream>,
 	/// Periodically identifies the remote and responds to incoming requests.
 	identify: Identify<TSubstream>,
 
-	/// Stream that fires when we need to perform the next Kademlia query.
-	#[behaviour(ignore)]
-	next_kad_random_query: Interval,
 
 	/// Queue of events to produce for the outside.
 	#[behaviour(ignore)]
@@ -61,14 +61,12 @@ impl<TSubstream> Behaviour<TSubstream> {
 			periodic_ping: PeriodicPing::new(),
 			ping_listen: PingListen::new(),
 			custom_protocols: CustomProtos::new(config, protocols),
-			kademlia: Kademlia::new(local_peer_id),
+			discovery: DiscoveryBehaviour::new(local_peer_id),
 			identify: Identify::new(
 				// The agent and protocol versions; maybe we should use something better?
 				concat!("substrate/", env!("CARGO_PKG_VERSION")).to_owned(),
 				concat!("substrate/", env!("CARGO_PKG_VERSION")).to_owned()
 			),
-			// TODO: exponentially increasing time?
-			next_kad_random_query: Interval::new(Instant::now() + Duration::from_secs(5), Duration::from_secs(45)),
 			events: Vec::new(),
 		}
 	}
@@ -166,20 +164,88 @@ impl<TSubstream> Behaviour<TSubstream> {
 			return Async::Ready(NetworkBehaviourAction::GenerateEvent(self.events.remove(0)));
 		}
 
+		Async::NotReady
+	}
+}
+
+/// Implementation of `NetworkBehaviour` that discovers the nodes on the network.
+pub struct DiscoveryBehaviour<TSubstream> {
+	/// Kademlia requests and answers.
+	kademlia: Kademlia<TSubstream>,
+	/// Stream that fires when we need to perform the next random Kademlia query.
+	next_kad_random_query: Delay,
+	/// After `next_kad_random_query` triggers, the next one triggers after this duration.
+	duration_to_next_kad: Duration,
+}
+
+impl<TSubstream> DiscoveryBehaviour<TSubstream> {
+	fn new(local_peer_id: PeerId) -> Self {
+		DiscoveryBehaviour {
+			kademlia: Kademlia::new(local_peer_id),
+			next_kad_random_query: Delay::new(Instant::now()),
+			duration_to_next_kad: Duration::from_secs(1),
+		}
+	}
+}
+
+impl<TSubstream, TTopology> NetworkBehaviour<TTopology> for DiscoveryBehaviour<TSubstream>
+where
+	TSubstream: AsyncRead + AsyncWrite,
+	TTopology: KademliaTopology,
+{
+	type ProtocolsHandler = <Kademlia<TSubstream> as NetworkBehaviour<TTopology>>::ProtocolsHandler;
+	type OutEvent = <Kademlia<TSubstream> as NetworkBehaviour<TTopology>>::OutEvent;
+
+	fn new_handler(&mut self) -> Self::ProtocolsHandler {
+		NetworkBehaviour::<TTopology>::new_handler(&mut self.kademlia)
+	}
+
+	fn inject_connected(&mut self, peer_id: PeerId, endpoint: ConnectedPoint) {
+		NetworkBehaviour::<TTopology>::inject_connected(&mut self.kademlia, peer_id, endpoint)
+	}
+
+	fn inject_disconnected(&mut self, peer_id: &PeerId, endpoint: ConnectedPoint) {
+		NetworkBehaviour::<TTopology>::inject_disconnected(&mut self.kademlia, peer_id, endpoint)
+	}
+
+	fn inject_node_event(
+		&mut self,
+		peer_id: PeerId,
+		event: <Self::ProtocolsHandler as ProtocolsHandler>::OutEvent,
+	) {
+		NetworkBehaviour::<TTopology>::inject_node_event(&mut self.kademlia, peer_id, event)
+	}
+
+	fn poll(
+		&mut self,
+		params: &mut PollParameters<TTopology>,
+	) -> Async<
+		NetworkBehaviourAction<
+			<Self::ProtocolsHandler as ProtocolsHandler>::InEvent,
+			Self::OutEvent,
+		>,
+	> {
+		// Poll Kademlia.
+		match self.kademlia.poll(params) {
+			Async::Ready(action) => return Async::Ready(action),
+			Async::NotReady => (),
+		};
+
 		// Poll the stream that fires when we need to start a random Kademlia query.
 		loop {
 			match self.next_kad_random_query.poll() {
 				Ok(Async::NotReady) => break,
-				Ok(Async::Ready(Some(_))) => {
+				Ok(Async::Ready(_)) => {
 					let random_peer_id = PeerId::random();
 					debug!(target: "sub-libp2p", "Starting random Kademlia request for {:?}",
 						random_peer_id);
 					self.kademlia.find_node(random_peer_id);
+
+					// Reset the `Delay` to the next random.
+					self.next_kad_random_query.reset(Instant::now() + self.duration_to_next_kad);
+					self.duration_to_next_kad = cmp::min(self.duration_to_next_kad * 2,
+						Duration::from_secs(60));
 				},
-				Ok(Async::Ready(None)) => {
-					warn!(target: "sub-libp2p", "Kad query timer closed unexpectedly");
-					break
-				}
 				Err(err) => {
 					warn!(target: "sub-libp2p", "Kad query timer errored: {:?}", err);
 					break
@@ -190,3 +256,4 @@ impl<TSubstream> Behaviour<TSubstream> {
 		Async::NotReady
 	}
 }
+
