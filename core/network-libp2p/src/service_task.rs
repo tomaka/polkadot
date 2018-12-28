@@ -27,7 +27,7 @@ use std::fs;
 use std::io::{Error as IoError, ErrorKind as IoErrorKind};
 use std::net::SocketAddr;
 use std::path::Path;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use topology::NetTopology;
 use tokio_timer::Interval;
 use {Error, ErrorKind, NetworkConfiguration, NodeIndex, ProtocolId, parse_str_addr};
@@ -143,7 +143,6 @@ where TProtos: IntoIterator<Item = RegisteredProtocol> {
 		nodes_addresses: Default::default(),
 		index_by_id: Default::default(),
 		next_node_id: 1,
-		next_kad_random_query: Interval::new(Instant::now() + Duration::from_secs(5), Duration::from_secs(45)),
 		cleanup: Interval::new_interval(Duration::from_secs(60)),
 		injected_events: Vec::new(),
 	})
@@ -204,9 +203,6 @@ pub struct Service {
 
 	/// Next index to assign to a node.
 	next_node_id: NodeIndex,
-
-	/// Stream that fires when we need to perform the next Kademlia query.
-	next_kad_random_query: Interval,
 
 	/// Stream that fires when we need to cleanup and flush the topology, and cleanup the disabled
 	/// peers.
@@ -348,7 +344,6 @@ impl Service {
 					})))
 				}
 				Ok(Async::Ready(Some((peer_id, CustomProtosHandlerOut::CustomMessage { protocol_id, data })))) => {
-					debug!(target: "sub-libp2p", "Connection to {:?} closed gracefully", peer_id);
 					let node_index = self.index_of_peer_or_assign(peer_id);
 					break Ok(Async::Ready(Some(ServiceEvent::CustomMessage {
 						node_index,
@@ -365,30 +360,6 @@ impl Service {
 				Err(_) => unreachable!("The Swarm never errors"),
 			}
 		}
-	}
-
-	/// Polls the Kademlia-related events.
-	fn poll_kademlia(&mut self) -> Poll<Option<ServiceEvent>, IoError> {
-		// TODO: move this within the behaviour
-		// Poll the future that fires when we need to perform a random Kademlia query.
-		loop {
-			match self.next_kad_random_query.poll() {
-				Ok(Async::NotReady) => break,
-				Ok(Async::Ready(Some(_))) => {
-					self.swarm.perform_kad_random_query();
-				},
-				Ok(Async::Ready(None)) => {
-					warn!(target: "sub-libp2p", "Kad query timer closed unexpectedly");
-					return Ok(Async::Ready(None));
-				}
-				Err(err) => {
-					warn!(target: "sub-libp2p", "Kad query timer errored: {:?}", err);
-					return Err(IoError::new(IoErrorKind::Other, err));
-				}
-			}
-		}
-
-		Ok(Async::NotReady)
 	}
 
 	/// Polls the stream that fires when we need to cleanup and flush the topology.
@@ -436,11 +407,6 @@ impl Stream for Service {
 		}
 
 		match self.poll_swarm()? {
-			Async::Ready(value) => return Ok(Async::Ready(value)),
-			Async::NotReady => (),
-		}
-
-		match self.poll_kademlia()? {
 			Async::Ready(value) => return Ok(Async::Ready(value)),
 			Async::NotReady => (),
 		}
