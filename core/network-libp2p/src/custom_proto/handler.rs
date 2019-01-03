@@ -20,11 +20,13 @@ use bytes::Bytes;
 use futures::prelude::*;
 use libp2p::core::{
 	Endpoint, ProtocolsHandler, ProtocolsHandlerEvent,
+	protocols_handler::ProtocolsHandlerUpgrErr,
 	upgrade::{InboundUpgrade, OutboundUpgrade}
 };
 use smallvec::SmallVec;
 use std::{fmt, io};
 use tokio_io::{AsyncRead, AsyncWrite};
+use void::Void;
 
 /// Protocol handler that tries to maintain one substream per registered custom protocol.
 pub struct CustomProtosHandler<TSubstream> {
@@ -143,6 +145,7 @@ where
 	type InEvent = CustomProtosHandlerIn;
 	type OutEvent = CustomProtosHandlerOut;
 	type Substream = TSubstream;
+	type Error = Void;
 	type InboundProtocol = RegisteredProtocols;
 	type OutboundProtocol = RegisteredProtocol;
 	type OutboundOpenInfo = ();
@@ -193,7 +196,7 @@ where
 	fn inject_inbound_closed(&mut self) {}
 
 	#[inline]
-	fn inject_dial_upgrade_error(&mut self, _: Self::OutboundOpenInfo, _: io::Error) {
+	fn inject_dial_upgrade_error(&mut self, _: Self::OutboundOpenInfo, _: ProtocolsHandlerUpgrErr<io::Error>) {
 		// Right now if the remote doesn't support one of the custom protocols, we shut down the
 		// entire connection. This is a hack-ish solution to the problem where we connect to nodes
 		// that support libp2p but not the testnet that we want.
@@ -211,16 +214,16 @@ where
 	fn poll(
 		&mut self,
 	) -> Poll<
-		Option<ProtocolsHandlerEvent<Self::OutboundProtocol, Self::OutboundOpenInfo, Self::OutEvent>>,
-		io::Error,
+		ProtocolsHandlerEvent<Self::OutboundProtocol, Self::OutboundOpenInfo, Self::OutEvent>,
+		Self::Error,
 	> {
 		if !self.events_queue.is_empty() {
 			let event = self.events_queue.remove(0);
-			return Ok(Async::Ready(Some(event)));
+			return Ok(Async::Ready(event));
 		}
 
 		if self.shutting_down && self.substreams.is_empty() {
-			return Ok(Async::Ready(None));
+			return Ok(Async::Ready(ProtocolsHandlerEvent::Shutdown));
 		}
 
 		for n in (0..self.substreams.len()).rev() {
@@ -233,7 +236,7 @@ where
 							data
 						};
 						self.substreams.push(substream);
-						return Ok(Async::Ready(Some(ProtocolsHandlerEvent::Custom(event))));
+						return Ok(Async::Ready(ProtocolsHandlerEvent::Custom(event)));
 					},
 					Ok(Async::NotReady) => {
 						self.substreams.push(substream);
@@ -244,14 +247,14 @@ where
 							protocol_id: substream.protocol_id(),
 							result: Ok(())
 						};
-						return Ok(Async::Ready(Some(ProtocolsHandlerEvent::Custom(event))));
+						return Ok(Async::Ready(ProtocolsHandlerEvent::Custom(event)));
 					},
 					Err(err) => {
 						let event = CustomProtosHandlerOut::CustomProtocolClosed {
 							protocol_id: substream.protocol_id(),
 							result: Err(err)
 						};
-						return Ok(Async::Ready(Some(ProtocolsHandlerEvent::Custom(event))));
+						return Ok(Async::Ready(ProtocolsHandlerEvent::Custom(event)));
 					},
 				}
 			}

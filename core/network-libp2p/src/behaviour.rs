@@ -23,7 +23,7 @@ use libp2p::core::swarm::{ConnectedPoint, NetworkBehaviour, NetworkBehaviourActi
 use libp2p::core::swarm::{NetworkBehaviourEventProcess, PollParameters};
 use libp2p::identify::{Identify, IdentifyEvent};
 use libp2p::kad::{Kademlia, KademliaOut, KademliaTopology};
-use libp2p::ping::{PeriodicPing, PingListen};
+use libp2p::ping::{Ping, PingEvent};
 use std::{cmp, time::Duration, time::Instant};
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_timer::Delay;
@@ -34,9 +34,7 @@ use void;
 #[behaviour(out_event = "BehaviourEvent", poll_method = "poll")]
 pub struct Behaviour<TSubstream> {
 	/// Periodically ping nodes, and close the connection if it's unresponsive.
-	periodic_ping: PeriodicPing<TSubstream>,
-	/// Respond to incoming pings.
-	ping_listen: PingListen<TSubstream>,
+	ping: Ping<TSubstream>,
 	/// Custom protocols (dot, bbq, sub, etc.).
 	custom_protocols: CustomProtos<TSubstream>,
 	/// Discovers nodes of the network. Defined below.
@@ -58,8 +56,7 @@ impl<TSubstream> Behaviour<TSubstream> {
 	// TODO: redundancy between config and local_peer_id
 	pub fn new(config: &NetworkConfiguration, local_peer_id: PeerId, protocols: RegisteredProtocols) -> Self {
 		Behaviour {
-			periodic_ping: PeriodicPing::new(),
-			ping_listen: PingListen::new(),
+			ping: Ping::new(),
 			custom_protocols: CustomProtos::new(config, protocols),
 			discovery: DiscoveryBehaviour::new(local_peer_id),
 			identify: Identify::new(
@@ -155,6 +152,16 @@ impl<TSubstream> NetworkBehaviourEventProcess<KademliaOut> for Behaviour<TSubstr
 		// We only ever use Kademlia for discovering nodes, and nodes discovered by Kademlia are
 		// automatically added to the topology. Therefore we don't need to do anything.
 		trace!(target: "sub-libp2p", "Kademlia result outcome: {:?}", event);
+	}
+}
+
+impl<TSubstream> NetworkBehaviourEventProcess<PingEvent> for Behaviour<TSubstream> {
+	fn inject_event(&mut self, event: PingEvent) {
+		match event {
+			PingEvent::PingSuccess { peer, time } => {
+				trace!(target: "sub-libp2p", "Ping time with {:?}: {:?}", peer, time);
+			}
+		}
 	}
 }
 
