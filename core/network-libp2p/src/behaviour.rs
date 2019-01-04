@@ -42,7 +42,6 @@ pub struct Behaviour<TSubstream> {
 	/// Periodically identifies the remote and responds to incoming requests.
 	identify: Identify<TSubstream>,
 
-
 	/// Queue of events to produce for the outside.
 	#[behaviour(ignore)]
 	events: Vec<BehaviourEvent>,
@@ -80,8 +79,8 @@ impl<TSubstream> Behaviour<TSubstream> {
 	}
 
 	/// Try to add a reserved peer.
-	pub fn add_reserved_peer(&mut self, peer_id: PeerId, addr: Multiaddr) {
-		self.custom_protocols.add_reserved_peer(peer_id, addr)
+	pub fn add_reserved_peer(&mut self, peer_id: PeerId) {
+		self.custom_protocols.add_reserved_peer(peer_id)
 	}
 
 	/// Try to remove a reserved peer.
@@ -107,20 +106,22 @@ impl<TSubstream> Behaviour<TSubstream> {
 	/// Same as `drop_node`, except that the same peer will not be able to reconnect later.
 	#[inline]
 	pub fn ban_node(&mut self, peer_id: PeerId) {
-		// FIXME: restore
-		// self.custom_protocols.ban_node(peer_id);
+		// TODO:
+		self.custom_protocols.disconnect_peer(&peer_id)
 	}
 
-	/// Disconnects a peer.
+	/// Disconnects the custom protocols from a peer.
 	///
-	/// This is asynchronous and will not immediately close the peer.
+	/// The peer will still be able to use Kademlia or other protocols, but will get disconnected
+	/// after a few seconds of inactivity.
+	///
+	/// This is asynchronous and does not instantly close the custom protocols.
 	/// Corresponding closing events will be generated once the closing actually happens.
 	///
 	/// Has no effect if we're not connected to the `PeerId`.
 	#[inline]
 	pub fn drop_node(&mut self, peer_id: &PeerId) {
-		// FIXME: restore
-		// self.custom_protocols.drop_node(&peer_id);
+		self.custom_protocols.disconnect_peer(peer_id)
 	}
 }
 

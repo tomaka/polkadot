@@ -21,7 +21,7 @@ use bytes::Bytes;
 use fnv::FnvHashSet;
 use futures::prelude::*;
 use libp2p::core::swarm::{ConnectedPoint, NetworkBehaviour, NetworkBehaviourAction, PollParameters};
-use libp2p::core::{protocols_handler::ProtocolsHandler, Endpoint, Multiaddr, PeerId};
+use libp2p::core::{protocols_handler::ProtocolsHandler, Endpoint, PeerId};
 use smallvec::SmallVec;
 use std::{marker::PhantomData, time::Instant};
 use tokio_io::{AsyncRead, AsyncWrite};
@@ -83,9 +83,11 @@ impl<TSubstream> CustomProtos<TSubstream> {
 	}
 
 	/// Try to add a reserved peer.
-	pub fn add_reserved_peer(&mut self, peer_id: PeerId, addr: Multiaddr) {
-		// TODO: add `addr` to topology
+	pub fn add_reserved_peer(&mut self, peer_id: PeerId) {
 		self.reserved_peers.insert(peer_id);
+
+		// Trigger a `connect_to_nodes` round.
+		self.next_connect_to_nodes = Delay::new(Instant::now());
 	}
 
 	/// Try to remove a reserved peer.
@@ -98,6 +100,10 @@ impl<TSubstream> CustomProtos<TSubstream> {
 
 	/// Start accepting all peers again if we weren't.
 	pub fn accept_unreserved_peers(&mut self) {
+		if !self.reserved_only {
+			return
+		}
+
 		self.reserved_only = false;
 
 		// Trigger a `connect_to_nodes` round.
@@ -106,8 +112,31 @@ impl<TSubstream> CustomProtos<TSubstream> {
 
 	/// Start refusing non-reserved nodes. Returns the list of nodes that have been disconnected.
 	pub fn deny_unreserved_peers(&mut self) {
+		if self.reserved_only {
+			return
+		}
+
 		self.reserved_only = true;
-		// TODO: disconnect unreserved nodes
+
+		// Disconnecting nodes that are connected to us and that aren't reserved
+		for (peer_id, _, _) in &self.open_protocols {
+			if self.reserved_peers.contains(peer_id) {
+				continue
+			}
+
+			self.events.push(NetworkBehaviourAction::SendEvent {
+				peer_id: peer_id.clone(),
+				event: CustomProtosHandlerIn::Disable,
+			});
+		}
+	}
+
+	/// Disconnects the given peer if we are connected to it.
+	pub fn disconnect_peer(&mut self, peer: &PeerId) {
+		self.events.push(NetworkBehaviourAction::SendEvent {
+			peer_id: peer.clone(),
+			event: CustomProtosHandlerIn::Disable,
+		});
 	}
 
 	/// Sends a message to a peer using the given custom protocol.
@@ -228,7 +257,7 @@ where
 				debug_assert!(!self.open_protocols.iter().any(|(s, p, _)| {
 					s == &source && p == protocol_id
 				}));
-				self.open_protocols.push((source.clone(), protocol_id.clone(), endpoint));
+				self.open_protocols.push((source.clone(), *protocol_id, endpoint));
 			}
 			_ => {}
 		}

@@ -33,9 +33,8 @@ pub struct CustomProtosHandler<TSubstream> {
 	/// List of all the protocols we support.
 	protocols: RegisteredProtocols,
 
-	/// If true, we are trying to shut down the existing node and thus should refuse any incoming
-	/// connection.
-	shutting_down: bool,
+	/// See the documentation of `State`.
+	state: State,
 
 	/// The active substreams. There should always ever be only one substream per protocol.
 	substreams: SmallVec<[RegisteredProtocolSubstream<TSubstream>; 6]>,
@@ -44,9 +43,25 @@ pub struct CustomProtosHandler<TSubstream> {
 	events_queue: SmallVec<[ProtocolsHandlerEvent<RegisteredProtocol, (), CustomProtosHandlerOut>; 16]>,
 }
 
+/// State of the handler.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum State {
+	/// Normal functionning.
+	Normal,
+	/// We are disabled. We close existing substreams and refuse incoming connections, but don't
+	/// shut down the entire handler.
+	Disabled,
+	/// We are trying to shut down the existing node and thus should refuse any incoming
+	/// connection.
+	ShuttingDown,
+}
+
 /// Event that can be received by a `CustomProtosHandler`.
 #[derive(Debug)]
 pub enum CustomProtosHandlerIn {
+	/// The node should stop using custom protocols.
+	Disable,
+
 	/// Sends a message through a custom protocol substream.
 	SendCustomMessage {
 		/// The protocol to use.
@@ -106,7 +121,7 @@ where
 
 		CustomProtosHandler {
 			protocols,
-			shutting_down: false,
+			state: State::Normal,
 			substreams: SmallVec::new(),
 			events_queue,
 		}
@@ -118,8 +133,9 @@ where
 		proto: RegisteredProtocolSubstream<TSubstream>,
 		endpoint: Endpoint,
 	) {
-		if self.shutting_down {
-			return;
+		match self.state {
+			State::Disabled | State::ShuttingDown => return,
+			State::Normal => ()
 		}
 
 		if self.substreams.iter().any(|p| p.protocol_id() == proto.protocol_id()) {
@@ -173,6 +189,16 @@ where
 
 	fn inject_event(&mut self, message: CustomProtosHandlerIn) {
 		match message {
+			CustomProtosHandlerIn::Disable => {
+				match self.state {
+					State::Normal => self.state = State::Disabled,
+					State::Disabled | State::ShuttingDown => (),
+				}
+
+				for substream in self.substreams.iter_mut() {
+					substream.shutdown();
+				}
+			},
 			CustomProtosHandlerIn::SendCustomMessage { protocol, data } => {
 				debug_assert!(self.protocols.has_protocol(protocol),
 					"invalid protocol id requested in the API of the libp2p networking");
@@ -197,15 +223,23 @@ where
 
 	#[inline]
 	fn inject_dial_upgrade_error(&mut self, _: Self::OutboundOpenInfo, _: ProtocolsHandlerUpgrErr<io::Error>) {
+		self.events_queue.push(ProtocolsHandlerEvent::Custom(CustomProtosHandlerOut::UselessNode));
+	}
+
+	#[inline]
+	fn connection_keep_alive(&self) -> bool {
 		// Right now if the remote doesn't support one of the custom protocols, we shut down the
 		// entire connection. This is a hack-ish solution to the problem where we connect to nodes
 		// that support libp2p but not the testnet that we want.
-		self.events_queue.push(ProtocolsHandlerEvent::Custom(CustomProtosHandlerOut::UselessNode));
-		self.shutdown();
+		self.substreams.len() == self.protocols.len()
 	}
 
 	fn shutdown(&mut self) {
-		self.shutting_down = true;
+		match self.state {
+			State::Normal | State::Disabled => self.state = State::ShuttingDown,
+			State::ShuttingDown => (),
+		}
+
 		for substream in self.substreams.iter_mut() {
 			substream.shutdown();
 		}
@@ -219,44 +253,40 @@ where
 	> {
 		if !self.events_queue.is_empty() {
 			let event = self.events_queue.remove(0);
-			return Ok(Async::Ready(event));
+			return Ok(Async::Ready(event))
 		}
 
-		if self.shutting_down && self.substreams.is_empty() {
-			return Ok(Async::Ready(ProtocolsHandlerEvent::Shutdown));
+		if self.state == State::ShuttingDown && self.substreams.is_empty() {
+			return Ok(Async::Ready(ProtocolsHandlerEvent::Shutdown))
 		}
 
 		for n in (0..self.substreams.len()).rev() {
 			let mut substream = self.substreams.swap_remove(n);
-			loop {
-				match substream.poll() {
-					Ok(Async::Ready(Some(data))) => {
-						let event = CustomProtosHandlerOut::CustomMessage {
-							protocol_id: substream.protocol_id(),
-							data
-						};
-						self.substreams.push(substream);
-						return Ok(Async::Ready(ProtocolsHandlerEvent::Custom(event)));
-					},
-					Ok(Async::NotReady) => {
-						self.substreams.push(substream);
-						break;
-					},
-					Ok(Async::Ready(None)) => {
-						let event = CustomProtosHandlerOut::CustomProtocolClosed {
-							protocol_id: substream.protocol_id(),
-							result: Ok(())
-						};
-						return Ok(Async::Ready(ProtocolsHandlerEvent::Custom(event)));
-					},
-					Err(err) => {
-						let event = CustomProtosHandlerOut::CustomProtocolClosed {
-							protocol_id: substream.protocol_id(),
-							result: Err(err)
-						};
-						return Ok(Async::Ready(ProtocolsHandlerEvent::Custom(event)));
-					},
-				}
+			match substream.poll() {
+				Ok(Async::Ready(Some(data))) => {
+					let event = CustomProtosHandlerOut::CustomMessage {
+						protocol_id: substream.protocol_id(),
+						data
+					};
+					self.substreams.push(substream);
+					return Ok(Async::Ready(ProtocolsHandlerEvent::Custom(event)))
+				},
+				Ok(Async::NotReady) =>
+					self.substreams.push(substream),
+				Ok(Async::Ready(None)) => {
+					let event = CustomProtosHandlerOut::CustomProtocolClosed {
+						protocol_id: substream.protocol_id(),
+						result: Ok(())
+					};
+					return Ok(Async::Ready(ProtocolsHandlerEvent::Custom(event)))
+				},
+				Err(err) => {
+					let event = CustomProtosHandlerOut::CustomProtocolClosed {
+						protocol_id: substream.protocol_id(),
+						result: Err(err)
+					};
+					return Ok(Async::Ready(ProtocolsHandlerEvent::Custom(event)))
+				},
 			}
 		}
 
@@ -271,7 +301,7 @@ where
 	fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
 		f.debug_struct("CustomProtosHandler")
 			.field("protocols", &self.protocols.len())
-			.field("shutting_down", &self.shutting_down)
+			.field("state", &self.state)
 			.field("substreams", &self.substreams.len())
 			.finish()
 	}

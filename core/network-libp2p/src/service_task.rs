@@ -90,10 +90,6 @@ where TProtos: IntoIterator<Item = RegisteredProtocol> {
 		match parse_str_addr(bootnode) {
 			Ok((peer_id, addr)) => {
 				Swarm::topology_mut(&mut swarm).add_bootstrap_addr(&peer_id, addr.clone());
-				// TODO:
-				/*if let Err(_) = Swarm::dial(&mut swarm, peer_id) {
-					warn!(target: "sub-libp2p", "Failed to dial boot node: {}", bootnode);
-				}*/
 				Swarm::dial(&mut swarm, peer_id);
 			},
 			Err(_) => {
@@ -121,12 +117,8 @@ where TProtos: IntoIterator<Item = RegisteredProtocol> {
 	for reserved in config.reserved_nodes.iter() {
 		match parse_str_addr(reserved) {
 			Ok((peer_id, addr)) => {
-				Swarm::topology_mut(&mut swarm).add_bootstrap_addr(&peer_id, addr.clone());
-				swarm.add_reserved_peer(peer_id.clone(), addr.clone());
-				// TODO:
-				/*if let Err(_) = Swarm::dial(&mut swarm, peer_id) {
-					warn!(target: "sub-libp2p", "Failed to dial reserved node: {}", reserved);
-				}*/
+				Swarm::topology_mut(&mut swarm).add_bootstrap_addr(&peer_id, addr);
+				swarm.add_reserved_peer(peer_id.clone());
 				Swarm::dial(&mut swarm, peer_id);
 			},
 			Err(_) =>
@@ -136,7 +128,8 @@ where TProtos: IntoIterator<Item = RegisteredProtocol> {
 		}
 	}
 
-	debug!(target: "sub-libp2p", "Topology started with {} entries", Swarm::topology_mut(&mut swarm).num_peers());
+	debug!(target: "sub-libp2p", "Topology started with {} entries",
+		Swarm::topology_mut(&mut swarm).num_peers());
 
 	Ok(Service {
 		swarm,
@@ -222,7 +215,7 @@ impl Service {
 	/// Returns the peer id of the local node.
 	#[inline]
 	pub fn peer_id(&self) -> &PeerId {
-		unimplemented!()// TODO: self.kad_system.local_peer_id()
+		Swarm::local_peer_id(&self.swarm)
 	}
 
 	/// Returns the list of all the peers we are connected to.
@@ -233,9 +226,8 @@ impl Service {
 
 	/// Try to add a reserved peer.
 	pub fn add_reserved_peer(&mut self, peer_id: PeerId, addr: Multiaddr) {
-		Swarm::topology_mut(&mut self.swarm).add_bootstrap_addr(&peer_id, addr.clone());
-		self.swarm.add_reserved_peer(peer_id.clone(), addr.clone());
-		Swarm::dial(&mut self.swarm, peer_id);
+		Swarm::topology_mut(&mut self.swarm).add_bootstrap_addr(&peer_id, addr);
+		self.swarm.add_reserved_peer(peer_id);
 	}
 
 	/// Try to remove a reserved peer.
@@ -292,7 +284,7 @@ impl Service {
 	#[inline]
 	pub fn ban_node(&mut self, node_index: NodeIndex) {
 		if let Some(peer_id) = self.nodes_addresses.get(&node_index).map(|(id, _)| id) {
-			info!(target: "sub-libp2p", "Banned {:?}", peer_id);
+			info!(target: "sub-libp2p", "Banned {:?} (#{:?})", peer_id, node_index);
 			self.swarm.ban_node(peer_id.clone());
 		}
 	}
@@ -304,6 +296,7 @@ impl Service {
 	#[inline]
 	pub fn drop_node(&mut self, node_index: NodeIndex) {
 		if let Some(peer_id) = self.nodes_addresses.get(&node_index).map(|(id, _)| id) {
+			debug!(target: "sub-libp2p", "Dropping {:?} on purpose (#{:?})", peer_id, node_index);
 			self.swarm.drop_node(peer_id);
 		}
 	}
