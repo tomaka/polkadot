@@ -417,6 +417,7 @@ impl KademliaTopology for NetTopology {
 	fn closest_peers(&mut self, target: &Multihash, _max: usize) -> Self::ClosestPeersIter {
 		// TODO: very inefficient
 		let mut peers = self.store.keys().cloned().collect::<Vec<_>>();
+		peers.push(self.local_peer_id.clone());
 		peers.sort_by(|a, b| {
 			b.as_ref().distance_with(target).cmp(&a.as_ref().distance_with(target))
 		});
