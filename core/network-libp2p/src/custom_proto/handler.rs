@@ -29,6 +29,11 @@ use tokio_io::{AsyncRead, AsyncWrite};
 use void::Void;
 
 /// Protocol handler that tries to maintain one substream per registered custom protocol.
+///
+/// The handler initially starts in the "Disable" state. It can then be enabled by sending an
+/// `Enable` message.
+/// The handler can then be enabled and disabled at any time with the `Enable` and `Disable`
+/// messages.
 pub struct CustomProtosHandler<TSubstream> {
 	/// List of all the protocols we support.
 	protocols: RegisteredProtocols,
@@ -48,9 +53,11 @@ pub struct CustomProtosHandler<TSubstream> {
 enum State {
 	/// Normal functionning.
 	Normal,
+
 	/// We are disabled. We close existing substreams and refuse incoming connections, but don't
 	/// shut down the entire handler.
 	Disabled,
+
 	/// We are trying to shut down the existing node and thus should refuse any incoming
 	/// connection.
 	ShuttingDown,
@@ -59,6 +66,9 @@ enum State {
 /// Event that can be received by a `CustomProtosHandler`.
 #[derive(Debug)]
 pub enum CustomProtosHandlerIn {
+	/// The node should start using custom protocols.
+	Enable,
+
 	/// The node should stop using custom protocols.
 	Disable,
 
@@ -80,8 +90,6 @@ pub enum CustomProtosHandlerOut {
 		protocol_id: ProtocolId,
 		/// Version of the protocol that has been opened.
 		version: u8,
-		/// Whether the substream was inbound or outbound.
-		endpoint: Endpoint,
 	},
 
 	/// Closed a custom protocol with the remote.
@@ -110,20 +118,11 @@ where
 {
 	/// Builds a new `CustomProtosHandler`.
 	pub fn new(protocols: RegisteredProtocols) -> Self {
-		// Try open one substream for each registered protocol.
-		let mut events_queue = SmallVec::new();
-		for protocol in protocols.0.iter() {
-			events_queue.push(ProtocolsHandlerEvent::OutboundSubstreamRequest {
-				upgrade: protocol.clone(),
-				info: (),
-			});
-		}
-
 		CustomProtosHandler {
 			protocols,
-			state: State::Normal,
+			state: State::Disabled,
 			substreams: SmallVec::new(),
-			events_queue,
+			events_queue: SmallVec::new(),
 		}
 	}
 
@@ -131,7 +130,7 @@ where
 	fn inject_fully_negotiated(
 		&mut self,
 		proto: RegisteredProtocolSubstream<TSubstream>,
-		endpoint: Endpoint,
+		_: Endpoint,
 	) {
 		match self.state {
 			State::Disabled | State::ShuttingDown => return,
@@ -146,7 +145,6 @@ where
 		let event = CustomProtosHandlerOut::CustomProtocolOpen {
 			protocol_id: proto.protocol_id(),
 			version: proto.protocol_version(),
-			endpoint,
 		};
 
 		self.substreams.push(proto);
@@ -197,6 +195,20 @@ where
 
 				for substream in self.substreams.iter_mut() {
 					substream.shutdown();
+				}
+			},
+			CustomProtosHandlerIn::Enable => {
+				match self.state {
+					State::Disabled => self.state = State::Normal,
+					State::Normal | State::ShuttingDown => (),
+				}
+
+				// Try open one substream for each registered protocol.
+				for protocol in self.protocols.0.iter() {
+					self.events_queue.push(ProtocolsHandlerEvent::OutboundSubstreamRequest {
+						upgrade: protocol.clone(),
+						info: (),
+					});
 				}
 			},
 			CustomProtosHandlerIn::SendCustomMessage { protocol, data } => {

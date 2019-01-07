@@ -18,28 +18,38 @@ use crate::custom_proto::handler::{CustomProtosHandler, CustomProtosHandlerOut, 
 use crate::custom_proto::upgrade::RegisteredProtocols;
 use crate::{NetworkConfiguration, NonReservedPeerMode, ProtocolId, topology::NetTopology};
 use bytes::Bytes;
-use fnv::FnvHashSet;
+use fnv::{FnvHashMap, FnvHashSet};
 use futures::prelude::*;
 use libp2p::core::swarm::{ConnectedPoint, NetworkBehaviour, NetworkBehaviourAction, PollParameters};
 use libp2p::core::{protocols_handler::ProtocolsHandler, Endpoint, PeerId};
 use smallvec::SmallVec;
-use std::{marker::PhantomData, time::Instant};
+use std::{marker::PhantomData, time::Duration, time::Instant};
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_timer::Delay;
+
+// Duration during which a peer is disabled.
+const PEER_DISABLE_DURATION: Duration = Duration::from_secs(5 * 60);
 
 /// Network behaviour that handles opening substreams for custom protocols with other nodes.
 pub struct CustomProtos<TSubstream> {
 	/// List of protocols to open with peers. Never modified.
 	registered_protocols: RegisteredProtocols,
 
-	/// List of protocols that we have open with remotes.
-	open_protocols: Vec<(PeerId, ProtocolId, Endpoint)>,
+	/// List of custom protocols that we have open with remotes.
+	open_protocols: Vec<(PeerId, ProtocolId)>,
 
-	/// Maximum number of incoming non-reserved connections, taken from the config.
-	// TODO: unused
+	/// List of peer handlers that were enabled, and whether we're dialing or listening.
+	///
+	/// Note that it is possible for a peer to be in the shutdown process, in which case it will
+	/// not be in this list but will be present in `open_protocols`.
+	/// It is also possible that we have *just* enabled a peer, in which case it will be in this
+	/// list but not in `open_protocols`.
+	enabled_peers: FnvHashMap<PeerId, Endpoint>,
+
+	/// Maximum number of incoming non-reserved connections, taken from the config. Never modified.
 	max_incoming_connections: usize,
 
-	/// Maximum number of outgoing non-reserved connections, taken from the config.
+	/// Maximum number of outgoing non-reserved connections, taken from the config. Never modified.
 	max_outgoing_connections: usize,
 
 	/// If true, only reserved peers can connect. TODO: shouldn't be here?
@@ -47,6 +57,9 @@ pub struct CustomProtos<TSubstream> {
 
 	/// List of the IDs of the reserved peers. We always try to maintain a connection these peers.
 	reserved_peers: FnvHashSet<PeerId>,
+
+	/// List of the IDs of peers that are forbidden, and the moment their ban expires.
+	banned_peers: Vec<(PeerId, Instant)>,
 
 	/// When this delay expires, we need to synchronize our active connectons with the
 	/// network topology.
@@ -65,9 +78,9 @@ impl<TSubstream> CustomProtos<TSubstream> {
 		let max_incoming_connections = config.in_peers as usize;
 		let max_outgoing_connections = config.out_peers as usize;
 
-		let open_protos_cap = max_incoming_connections
-			.saturating_add(max_outgoing_connections)
-			.saturating_mul(registered_protocols.len());
+		// TODO: more values for reserved peers?
+		let connec_cap = max_incoming_connections.saturating_add(max_outgoing_connections);
+		let open_protos_cap = connec_cap.saturating_mul(registered_protocols.len());
 
 		CustomProtos {
 			registered_protocols,
@@ -75,7 +88,9 @@ impl<TSubstream> CustomProtos<TSubstream> {
 			max_outgoing_connections,
 			reserved_only: config.non_reserved_mode == NonReservedPeerMode::Deny,
 			reserved_peers: Default::default(),
+			banned_peers: Vec::new(),
 			open_protocols: Vec::with_capacity(open_protos_cap),
+			enabled_peers: FnvHashMap::with_capacity_and_hasher(connec_cap, Default::default()),
 			next_connect_to_nodes: Delay::new(Instant::now()),
 			events: SmallVec::new(),
 			marker: PhantomData,
@@ -119,24 +134,47 @@ impl<TSubstream> CustomProtos<TSubstream> {
 		self.reserved_only = true;
 
 		// Disconnecting nodes that are connected to us and that aren't reserved
-		for (peer_id, _, _) in &self.open_protocols {
-			if self.reserved_peers.contains(peer_id) {
-				continue
+		let reserved_peers = &mut self.reserved_peers;
+		let events = &mut self.events;
+		self.enabled_peers.retain(move |peer_id, _| {
+			if reserved_peers.contains(peer_id) {
+				return true
 			}
 
-			self.events.push(NetworkBehaviourAction::SendEvent {
+			events.push(NetworkBehaviourAction::SendEvent {
 				peer_id: peer_id.clone(),
+				event: CustomProtosHandlerIn::Disable,
+			});
+
+			false
+		})
+	}
+
+	/// Disconnects the given peer if we are connected to it.
+	pub fn disconnect_peer(&mut self, peer: &PeerId) {
+		if self.enabled_peers.remove(peer).is_some() {
+			self.events.push(NetworkBehaviourAction::SendEvent {
+				peer_id: peer.clone(),
 				event: CustomProtosHandlerIn::Disable,
 			});
 		}
 	}
 
-	/// Disconnects the given peer if we are connected to it.
-	pub fn disconnect_peer(&mut self, peer: &PeerId) {
-		self.events.push(NetworkBehaviourAction::SendEvent {
-			peer_id: peer.clone(),
-			event: CustomProtosHandlerIn::Disable,
-		});
+	/// Disconnects the given peer if we are connected to it and disables it for a little while.
+	pub fn ban_peer(&mut self, peer_id: PeerId) {
+		// Peer is already banned
+		if self.banned_peers.iter().any(|(p, _)| p == &peer_id) {
+			return
+		}
+
+		self.banned_peers.push((peer_id.clone(), Instant::now() + PEER_DISABLE_DURATION));
+
+		if self.enabled_peers.remove(&peer_id).is_some() {
+			self.events.push(NetworkBehaviourAction::SendEvent {
+				peer_id,
+				event: CustomProtosHandlerIn::Disable,
+			});
+		}
 	}
 
 	/// Sends a message to a peer using the given custom protocol.
@@ -162,8 +200,8 @@ impl<TSubstream> CustomProtos<TSubstream> {
 	fn connect_to_nodes(&mut self, params: &mut PollParameters<NetTopology>) {
 		// Make sure we are connected or connecting to all the reserved nodes.
 		for reserved in self.reserved_peers.iter() {
-			// TODO: only if not in a pending connection
-			if self.open_protocols.iter().all(|(p, _, _)| p != reserved) {
+			// TODO: don't generate an event if we're already in a pending connection
+			if !self.enabled_peers.contains_key(&reserved) {
 				self.events.push(NetworkBehaviourAction::DialPeer { peer_id: reserved.clone() });
 			}
 		}
@@ -175,16 +213,17 @@ impl<TSubstream> CustomProtos<TSubstream> {
 
 		// Counter of number of connections to open, decreased when we open one.
 		let mut num_to_open = {
-			let num_outgoing_connections = self.open_protocols
+			let num_outgoing_connections = self.enabled_peers
 				.iter()
-				.filter(|(_, _, endpoint)| endpoint == &Endpoint::Dialer)
+				.filter(|(_, endpoint)| **endpoint == Endpoint::Dialer)
+				.filter(|(p, _)| !self.reserved_peers.contains(p))
 				.count();
 			self.max_outgoing_connections - num_outgoing_connections
 		};
 
 		let local_peer_id = params.local_peer_id().clone();
 		let (to_try, will_change) = params.topology().addrs_to_attempt();
-		for (peer_id, addr) in to_try {
+		for (peer_id, _) in to_try {
 			if num_to_open == 0 {
 				break;
 			}
@@ -193,20 +232,17 @@ impl<TSubstream> CustomProtos<TSubstream> {
 				continue;
 			}
 
-			// TODO: restore
-			/*if self.disabled_peers.contains_key(&peer_id) {
-				continue;
+			if let Some((_, ban_end)) = self.banned_peers.iter().find(|(p, _)| p == peer_id) {
+				if *ban_end > Instant::now() {
+					continue
+				}
 			}
 
-			// It is possible that we are connected to this peer, but the topology doesn't know
-			// about that because it is an incoming connection.
-			match self.swarm.ensure_connection(peer_id.clone(), addr.clone()) {
-				Ok(true) => (),
-				Ok(false) => num_to_open -= 1,
-				Err(_) => ()
-			}*/
+			num_to_open -= 1;
+			self.events.push(NetworkBehaviourAction::DialPeer { peer_id: peer_id.clone() });
 		}
 
+		// Next round is when we expect the topology will change.
 		self.next_connect_to_nodes.reset(will_change);
 	}
 }
@@ -222,18 +258,73 @@ where
 		CustomProtosHandler::new(self.registered_protocols.clone())
 	}
 
-	fn inject_connected(&mut self, _: PeerId, _: ConnectedPoint) {
+	fn inject_connected(&mut self, peer_id: PeerId, endpoint: ConnectedPoint) {
+		// When a peer connects, its handler is initially in the disabled state. We make sure that
+		// the peer is allowed, and if so we put it in the enabled state.
+
+		let is_reserved = self.reserved_peers.contains(&peer_id);
+		if self.reserved_only && !is_reserved {
+			return
+		}
+
+		// Check whether peer is banned.
+		if !is_reserved {
+			if let Some((_, expire)) = self.banned_peers.iter().find(|(p, _)| p == &peer_id) {
+				if *expire < Instant::now() {
+					debug!(target: "sub-libp2p", "Ignoring banned peer {:?}", peer_id);
+					return
+				}
+			}
+		}
+
+		// Check the limits on the ingoing and outgoing connections.
+		match endpoint {
+			ConnectedPoint::Dialer { .. } => {
+				let num_outgoing = self.enabled_peers.iter()
+					.filter(|(_, e)| **e == Endpoint::Dialer)
+					.filter(|(p, _)| !self.reserved_peers.contains(p))
+					.count();
+
+				debug_assert!(num_outgoing <= self.max_outgoing_connections);
+				if num_outgoing == self.max_outgoing_connections {
+					return
+				}
+			}
+			ConnectedPoint::Listener { .. } => {
+				let num_ingoing = self.enabled_peers.iter()
+					.filter(|(_, e)| **e == Endpoint::Listener)
+					.filter(|(p, _)| !self.reserved_peers.contains(p))
+					.count();
+
+				debug_assert!(num_ingoing <= self.max_incoming_connections);
+				if num_ingoing == self.max_incoming_connections {
+					return
+				}
+			}
+		}
+
+		// If everything is fine, enable the node.
+		debug_assert!(self.enabled_peers.contains_key(&peer_id));
+		self.enabled_peers.insert(peer_id.clone(), endpoint.into());
+		self.events.push(NetworkBehaviourAction::SendEvent {
+			peer_id,
+			event: CustomProtosHandlerIn::Enable,
+		});
 	}
 
 	fn inject_disconnected(&mut self, peer_id: &PeerId, _: ConnectedPoint) {
-		if let Some(pos) = self.open_protocols.iter().position(|(p, _, _)| p == peer_id) {
-			let (_, protocol_id, _) = self.open_protocols.remove(pos);
+		while let Some(pos) = self.enabled_peers.iter().position(|(p, _)| p == peer_id) {
+			let (_, protocol_id) = self.open_protocols.remove(pos);
+
 			let event = CustomProtosHandlerOut::CustomProtocolClosed {
 				protocol_id,
 				result: Ok(()),
 			};
+
 			self.events.push(NetworkBehaviourAction::GenerateEvent((peer_id.clone(), event)));
 		}
+
+		self.enabled_peers.remove(peer_id);
 	}
 
 	fn inject_node_event(
@@ -243,9 +334,9 @@ where
 	) {
 		match event {
 			CustomProtosHandlerOut::CustomProtocolClosed { ref protocol_id, .. } => {
-				let pos = self.open_protocols.iter().position(|(s, p, _)| {
+				let pos = self.open_protocols.iter().position(|(s, p)|
 					s == &source && p == protocol_id
-				});
+				);
 
 				if let Some(pos) = pos {
 					self.open_protocols.remove(pos);
@@ -253,11 +344,11 @@ where
 					debug_assert!(false, "Couldn't find protocol in open_protocols");
 				}
 			}
-			CustomProtosHandlerOut::CustomProtocolOpen { ref protocol_id, endpoint, .. } => {
-				debug_assert!(!self.open_protocols.iter().any(|(s, p, _)| {
+			CustomProtosHandlerOut::CustomProtocolOpen { ref protocol_id, .. } => {
+				debug_assert!(!self.open_protocols.iter().any(|(s, p)|
 					s == &source && p == protocol_id
-				}));
-				self.open_protocols.push((source.clone(), *protocol_id, endpoint));
+				));
+				self.open_protocols.push((source.clone(), *protocol_id));
 			}
 			_ => {}
 		}
@@ -284,6 +375,10 @@ where
 				}
 			}
 		}
+
+		// Clean up `banned_peers`
+		self.banned_peers.retain(|(_, end)| *end < Instant::now());
+		self.banned_peers.shrink_to_fit();
 
 		if !self.events.is_empty() {
 			return Async::Ready(self.events.remove(0));

@@ -18,7 +18,7 @@ use crate::custom_proto::{CustomProtos, CustomProtosHandlerOut, RegisteredProtoc
 use crate::{NetworkConfiguration, ProtocolId};
 use bytes::Bytes;
 use futures::prelude::*;
-use libp2p::core::{Multiaddr, PeerId, ProtocolsHandler};
+use libp2p::core::{PeerId, ProtocolsHandler};
 use libp2p::core::swarm::{ConnectedPoint, NetworkBehaviour, NetworkBehaviourAction};
 use libp2p::core::swarm::{NetworkBehaviourEventProcess, PollParameters};
 use libp2p::identify::{Identify, IdentifyEvent};
@@ -106,8 +106,7 @@ impl<TSubstream> Behaviour<TSubstream> {
 	/// Same as `drop_node`, except that the same peer will not be able to reconnect later.
 	#[inline]
 	pub fn ban_node(&mut self, peer_id: PeerId) {
-		// TODO:
-		self.custom_protocols.disconnect_peer(&peer_id)
+		self.custom_protocols.ban_peer(peer_id)
 	}
 
 	/// Disconnects the custom protocols from a peer.
