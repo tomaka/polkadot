@@ -17,7 +17,7 @@
 use futures::prelude::*;
 use libp2p::{
 	InboundUpgradeExt, OutboundUpgradeExt, PeerId, Transport,
-	mplex, identity, secio, yamux, tcp, dns, websocket, bandwidth
+	mplex, identity, secio, yamux, tcp, dns, websocket, bandwidth, bluetooth
 };
 use libp2p::core::{self, transport::boxed::Boxed, muxing::StreamMuxerBox};
 use std::{io, sync::Arc, time::Duration, usize};
@@ -31,6 +31,8 @@ pub use self::bandwidth::BandwidthSinks;
 pub fn build_transport(
 	keypair: identity::Keypair
 ) -> (Boxed<(PeerId, StreamMuxerBox), io::Error>, Arc<bandwidth::BandwidthSinks>) {
+	let local_peer_id = keypair.public().into_peer_id();
+
 	let mut mplex_config = mplex::MplexConfig::new();
 	mplex_config.max_buffer_len_behaviour(mplex::MaxBufferBehaviour::Block);
 	mplex_config.max_buffer_len(usize::MAX);
@@ -39,6 +41,7 @@ pub fn build_transport(
 	let transport = websocket::WsConfig::new(transport.clone()).or_transport(transport);
 	let transport = dns::DnsConfig::new(transport);
 	let (transport, sinks) = bandwidth::BandwidthLogging::new(transport, Duration::from_secs(5));
+	let transport = transport.or_transport(bluetooth::BluetoothConfig::new(local_peer_id));
 
 	// TODO: rework the transport creation (https://github.com/libp2p/rust-libp2p/issues/783)
 	let transport = transport

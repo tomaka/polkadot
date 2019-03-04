@@ -17,6 +17,7 @@
 use crate::custom_proto::{CustomProto, CustomProtoOut, RegisteredProtocol};
 use futures::prelude::*;
 use libp2p::NetworkBehaviour;
+use libp2p::bluetooth::{BluetoothDiscovery, BluetoothEvent};
 use libp2p::core::{Multiaddr, PeerId, ProtocolsHandler, PublicKey};
 use libp2p::core::swarm::{ConnectedPoint, NetworkBehaviour, NetworkBehaviourAction};
 use libp2p::core::swarm::{NetworkBehaviourEventProcess, PollParameters};
@@ -24,7 +25,7 @@ use libp2p::identify::{Identify, IdentifyEvent, protocol::IdentifyInfo};
 use libp2p::kad::{Kademlia, KademliaOut};
 use libp2p::ping::{Ping, PingEvent};
 use log::{debug, trace, warn};
-use std::{cmp, io, fmt, time::Duration, time::Instant};
+use std::{cmp, fmt, io, time::Duration, time::Instant};
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_timer::Delay;
 use void;
@@ -41,6 +42,8 @@ pub struct Behaviour<TMessage, TSubstream> {
 	discovery: DiscoveryBehaviour<TSubstream>,
 	/// Periodically identifies the remote and responds to incoming requests.
 	identify: Identify<TSubstream>,
+	/// Discovers nearby Bluetooth devices that support libp2p.
+	bluetooth: BluetoothDiscovery<TSubstream>,
 
 	/// Queue of events to produce for the outside.
 	#[behaviour(ignore)]
@@ -79,6 +82,7 @@ impl<TMessage, TSubstream> Behaviour<TMessage, TSubstream> {
 				duration_to_next_kad: Duration::from_secs(10),
 			},
 			identify,
+			bluetooth: BluetoothDiscovery::new().unwrap(),		// TODO:
 			events: Vec::new(),
 		}
 	}
@@ -213,6 +217,20 @@ impl<TMessage, TSubstream> NetworkBehaviourEventProcess<void::Void> for Behaviou
 impl<TMessage, TSubstream> NetworkBehaviourEventProcess<CustomProtoOut<TMessage>> for Behaviour<TMessage, TSubstream> {
 	fn inject_event(&mut self, event: CustomProtoOut<TMessage>) {
 		self.events.push(event.into());
+	}
+}
+
+impl<TMessage, TSubstream> NetworkBehaviourEventProcess<BluetoothEvent> for Behaviour<TMessage, TSubstream> {
+	fn inject_event(&mut self, event: BluetoothEvent) {
+		match event {
+			BluetoothEvent::Discovered { peer_id, address } => {
+				trace!(target: "sub-libp2p", "Discovered Bluetooth device {:?} with {:?}",
+					address, peer_id);
+				self.custom_protocols.add_discovered_node(&peer_id);
+			},
+			// TODO: implement correctly
+			BluetoothEvent::Expired(_) => (),
+		}
 	}
 }
 
