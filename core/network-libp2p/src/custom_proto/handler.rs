@@ -68,26 +68,33 @@ use void::Void;
 ///
 /// ## How it works
 ///
-/// For backwards compatibility reasons, the behaviour of the handler is quite complicated. After
-/// enough nodes have upgraded, it should be simplified by using helpers provided by libp2p.
-///
 /// When the handler is created, it is initially in the `Init` state and waits for either a
-/// `Disable` or an `Enable` message from the outer layer. At any time, the outer layer is free to
-/// toggle the handler between the disabled and enabled states.
+/// `Disable` or an `Enable` message from the outer layer. At any point in time, the outer layer is
+/// free to toggle the handler between the disabled and enabled states.
 ///
-/// When the handler is enabled for the first time, if it is the dialer of the connection, it tries
-/// to open a substream. The substream negotiates either a protocol named `/substrate/xxx` or a
-/// protocol named `/substrate/multi/xxx`. If it is the former, then we are in
-/// "backwards-compatibility mode". If it is the latter, we are in normal operation mode.
+/// When the handler switches from "init" to "enabled" or from "disabled" to "enabled", it tries to
+/// open a substream with a special "open" protocol that includes the chain-specific protocol name.
+/// If an "open" message is received when we're already open, it is ignored. On success, the
+/// handler switches to the "Open" state.
 ///
-/// In "backwards-compatibility mode", we have one unique substream where bidirectional
-/// communications happen. If the remote closes the substream, we consider that we are now
-/// disconnected. Re-enabling is performed by re-opening the substream.
+/// Once open, the external API has control over the messages that are being sent. Each request
+/// gets sent over a different new substream. If a response is expected, it will be sent back on
+/// that same substream.
 ///
-/// In normal operation mode, each request gets sent over a different substream where the response
-/// is then sent back. If the remote refuses one of our substream open request, or if an error
-/// happens on one substream, we consider that we are disconnected. Re-enabling is performed by
-/// opening an outbound substream.
+/// Closing the link is done by opening a substream and sending a special message containing a
+/// closing reason. After this message has been sent or received, the handler is immediately
+/// switched to the closed state and will ignore any request sent by the remote (including any
+/// request that might have been sent in between). This closing message is currently technically
+/// an entirely different network protocol.
+///
+/// ## Future changes
+///
+/// - The special "Open" protocol should be replaced in favour of directly the "Status" of the
+///   network crate. The chain specs check should be done before we are actually open.
+/// - The gossiping and RPC systems should use two different protocols, so that RPC queries can
+///   still go through despite the link being closed. This would solve the fact that our queries
+///   will go unanswered if the remote decides to close our link before receiving it.
+/// - The closed message shouldn't have a different protocol name.
 ///
 pub struct CustomProtoHandlerProto<TMessage, TSubstream> {
 	/// Configuration for the protocol upgrade to negotiate.

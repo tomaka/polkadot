@@ -42,13 +42,12 @@ pub struct RegisteredProtocol<TMessage> {
 }
 
 impl<TMessage> RegisteredProtocol<TMessage> {
-	/// Creates a new `RegisteredProtocol`. The `custom_data` parameter will be
-	/// passed inside the `RegisteredProtocolOutput`.
+	/// Creates a new `RegisteredProtocol`.
 	pub fn new(protocol: ProtocolId, versions: &[u8])
 		-> Self {
 		let mut base_name = Bytes::from_static(b"/substrate/");
 		base_name.extend_from_slice(&protocol);
-		base_name.extend_from_slice(b"/");
+		base_name.extend_from_slice(b"/multi/");
 
 		RegisteredProtocol {
 			base_name,
@@ -63,7 +62,6 @@ impl<TMessage> RegisteredProtocol<TMessage> {
 	}
 
 	/// Returns the ID of the protocol.
-	#[inline]
 	pub fn id(&self) -> ProtocolId {
 		self.id
 	}
@@ -79,81 +77,6 @@ impl<TMessage> Clone for RegisteredProtocol<TMessage> {
 		}
 	}
 }
-
-/// Output of a `RegisteredProtocol` upgrade.
-pub struct RegisteredProtocolSubstream<TMessage, TSubstream> {
-	/// If true, we are in the process of closing the sink.
-	is_closing: bool,
-	/// Whether the local node opened this substream (dialer), or we received this substream from
-	/// the remote (listener).
-	endpoint: Endpoint,
-	/// Buffer of packets to send.
-	send_queue: VecDeque<Vec<u8>>,
-	/// If true, we should call `poll_complete` on the inner sink.
-	requires_poll_complete: bool,
-	/// The underlying substream.
-	inner: stream::Fuse<Framed<Negotiated<TSubstream>, UviBytes<Vec<u8>>>>,
-	/// Id of the protocol.
-	protocol_id: ProtocolId,
-	/// Version of the protocol that was negotiated.
-	protocol_version: u8,
-	/// If true, we have sent a "remote is clogged" event recently and shouldn't send another one
-	/// unless the buffer empties then fills itself again.
-	clogged_fuse: bool,
-	/// If true, then this substream uses the "/multi/" version of the protocol. This is a hint
-	/// that the handler can behave differently.
-	is_multiplex: bool,
-	/// Marker to pin the generic.
-	marker: PhantomData<TMessage>,
-}
-
-impl<TMessage, TSubstream> RegisteredProtocolSubstream<TMessage, TSubstream> {
-	/// Returns the protocol id.
-	#[inline]
-	pub fn protocol_id(&self) -> ProtocolId {
-		self.protocol_id
-	}
-
-	/// Returns the version of the protocol that was negotiated.
-	#[inline]
-	pub fn protocol_version(&self) -> u8 {
-		self.protocol_version
-	}
-
-	/// Returns whether the local node opened this substream (dialer), or we received this
-	/// substream from the remote (listener).
-	pub fn endpoint(&self) -> Endpoint {
-		self.endpoint
-	}
-
-	/// Returns true if we negotiated the "multiplexed" version. This means that the handler can
-	/// open multiple substreams instead of just one.
-	pub fn is_multiplex(&self) -> bool {
-		self.is_multiplex
-	}
-
-	/// Starts a graceful shutdown process on this substream.
-	///
-	/// Note that "graceful" means that we sent a closing message. We don't wait for any
-	/// confirmation from the remote.
-	///
-	/// After calling this, the stream is guaranteed to finish soon-ish.
-	pub fn shutdown(&mut self) {
-		self.is_closing = true;
-		self.send_queue.clear();
-	}
-
-	/// Sends a message to the substream.
-	pub fn send_message(&mut self, data: TMessage)
-	where TMessage: CustomMessage {
-		if self.is_closing {
-			return
-		}
-
-		self.send_queue.push_back(data.into_bytes());
-	}
-}
-
 /// Implemented on messages that can be sent or received on the network.
 pub trait CustomMessage {
 	/// Turns a message into the raw bytes to send over the network.
@@ -252,75 +175,6 @@ pub enum RegisteredProtocolEvent<TMessage> {
 	},
 }
 
-impl<TMessage, TSubstream> Stream for RegisteredProtocolSubstream<TMessage, TSubstream>
-where TSubstream: AsyncRead + AsyncWrite, TMessage: CustomMessage {
-	type Item = RegisteredProtocolEvent<TMessage>;
-	type Error = io::Error;
-
-	fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-		// Flushing the local queue.
-		while let Some(packet) = self.send_queue.pop_front() {
-			match self.inner.start_send(packet)? {
-				AsyncSink::NotReady(packet) => {
-					self.send_queue.push_front(packet);
-					break
-				},
-				AsyncSink::Ready => self.requires_poll_complete = true,
-			}
-		}
-
-		// If we are closing, close as soon as the Sink is closed.
-		if self.is_closing {
-			return Ok(self.inner.close()?.map(|()| None))
-		}
-
-		// Indicating that the remote is clogged if that's the case.
-		if self.send_queue.len() >= 2048 {
-			if !self.clogged_fuse {
-				// Note: this fuse is important not just for preventing us from flooding the logs;
-				// 	if you remove the fuse, then we will always return early from this function and
-				//	thus never read any message from the network.
-				self.clogged_fuse = true;
-				return Ok(Async::Ready(Some(RegisteredProtocolEvent::Clogged {
-					messages: self.send_queue.iter()
-						.map(|m| CustomMessage::from_bytes(&m))
-						.filter_map(Result::ok)
-						.collect(),
-				})))
-			}
-		} else {
-			self.clogged_fuse = false;
-		}
-
-		// Flushing if necessary.
-		if self.requires_poll_complete {
-			if let Async::Ready(()) = self.inner.poll_complete()? {
-				self.requires_poll_complete = false;
-			}
-		}
-
-		// Receiving incoming packets.
-		// Note that `inner` is wrapped in a `Fuse`, therefore we can poll it forever.
-		match self.inner.poll()? {
-			Async::Ready(Some(data)) => {
-				let message = <TMessage as CustomMessage>::from_bytes(&data)
-					.map_err(|()| {
-						warn!(target: "sub-libp2p", "Couldn't decode packet sent by the remote: {:?}", data);
-						io::ErrorKind::InvalidData
-					})?;
-				Ok(Async::Ready(Some(RegisteredProtocolEvent::Message(message))))
-			}
-			Async::Ready(None) =>
-				if !self.requires_poll_complete && self.send_queue.is_empty() {
-					Ok(Async::Ready(None))
-				} else {
-					Ok(Async::NotReady)
-				}
-			Async::NotReady => Ok(Async::NotReady),
-		}
-	}
-}
-
 impl<TMessage> UpgradeInfo for RegisteredProtocol<TMessage> {
 	type Info = RegisteredProtocolName;
 	type InfoIter = VecIntoIter<Self::Info>;
@@ -354,7 +208,7 @@ impl<TMessage> UpgradeInfo for RegisteredProtocol<TMessage> {
 			// default.
 			// Then finally we can remove the old mode after everyone has switched.
 			// See https://github.com/paritytech/substrate/issues/1692
-			iter::once(proto2).chain(iter::once(proto1))
+			iter::once(proto1).chain(iter::once(proto2))
 		}).collect::<Vec<_>>().into_iter()
 	}
 }
@@ -366,8 +220,6 @@ pub struct RegisteredProtocolName {
 	name: Bytes,
 	/// Version number. Stored in string form in `name`, but duplicated here for easier retrieval.
 	version: u8,
-	/// If true, then this version is the one with the multiplexing.
-	is_multiplex: bool,
 }
 
 impl ProtocolName for RegisteredProtocolName {
@@ -410,6 +262,111 @@ where TSubstream: AsyncRead + AsyncWrite,
 }
 
 impl<TMessage, TSubstream> OutboundUpgrade<TSubstream> for RegisteredProtocol<TMessage>
+where TSubstream: AsyncRead + AsyncWrite,
+{
+	type Output = <Self as InboundUpgrade<TSubstream>>::Output;
+	type Future = <Self as InboundUpgrade<TSubstream>>::Future;
+	type Error = <Self as InboundUpgrade<TSubstream>>::Error;
+
+	fn upgrade_outbound(
+		self,
+		socket: Negotiated<TSubstream>,
+		info: Self::Info,
+	) -> Self::Future {
+		let framed = Framed::new(socket, UviBytes::default());
+
+		future::ok(RegisteredProtocolSubstream {
+			is_closing: false,
+			endpoint: Endpoint::Dialer,
+			send_queue: VecDeque::new(),
+			requires_poll_complete: false,
+			inner: framed.fuse(),
+			protocol_id: self.id,
+			protocol_version: info.version,
+			clogged_fuse: false,
+			is_multiplex: info.is_multiplex,
+			marker: PhantomData,
+		})
+	}
+}
+
+// TODO: 16 MiB limit for packets
+
+pub struct OpenMessage {
+
+}
+
+impl UpgradeInfo for OpenMessage {
+	type Info = RegisteredProtocolName;
+	type InfoIter = VecIntoIter<Self::Info>;
+
+	fn protocol_info(&self) -> Self::InfoIter {
+		// Report each version as an individual protocol.
+		self.supported_versions.iter().flat_map(|&version| {
+			let num = version.to_string();
+
+			// Note that `name1` is the multiplex version, as we priviledge it over the old one.
+			let mut name1 = self.base_name.clone();
+			name1.extend_from_slice(b"multi/");
+			name1.extend_from_slice(num.as_bytes());
+			let proto1 = RegisteredProtocolName {
+				name: name1,
+				version,
+				is_multiplex: true,
+			};
+
+			let mut name2 = self.base_name.clone();
+			name2.extend_from_slice(num.as_bytes());
+			let proto2 = RegisteredProtocolName {
+				name: name2,
+				version,
+				is_multiplex: false,
+			};
+
+			// Important note: we prioritize the backwards compatible mode for now.
+			// After some intensive testing has been done, we should switch to the new mode by
+			// default.
+			// Then finally we can remove the old mode after everyone has switched.
+			// See https://github.com/paritytech/substrate/issues/1692
+			iter::once(proto1).chain(iter::once(proto2))
+		}).collect::<Vec<_>>().into_iter()
+	}
+}
+
+impl<TSubstream> InboundUpgrade<TSubstream> for OpenMessage
+where TSubstream: AsyncRead + AsyncWrite,
+{
+	type Output = ();
+	type Future = future::FutureResult<Self::Output, io::Error>;
+	type Error = io::Error;
+
+	fn upgrade_inbound(
+		self,
+		socket: Negotiated<TSubstream>,
+		info: Self::Info,
+	) -> Self::Future {
+		let framed = {
+			let mut codec = UviBytes::default();
+			codec.set_max_len(16 * 1024 * 1024);		// 16 MiB hard limit for packets.
+			Framed::new(socket, codec)
+		};
+
+		future::ok(RegisteredProtocolSubstream {
+			is_closing: false,
+			endpoint: Endpoint::Listener,
+			send_queue: VecDeque::new(),
+			requires_poll_complete: false,
+			inner: framed.fuse(),
+			protocol_id: self.id,
+			protocol_version: info.version,
+			clogged_fuse: false,
+			is_multiplex: info.is_multiplex,
+			marker: PhantomData,
+		})
+	}
+}
+
+impl<TSubstream> OutboundUpgrade<TSubstream> for OpenMessage
 where TSubstream: AsyncRead + AsyncWrite,
 {
 	type Output = <Self as InboundUpgrade<TSubstream>>::Output;
