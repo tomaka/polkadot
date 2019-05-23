@@ -23,10 +23,14 @@ use std::{collections::HashMap, collections::VecDeque, time::Instant};
 use futures::{prelude::*, sync::mpsc, try_ready};
 use libp2p::PeerId;
 use log::{debug, error, trace};
+use rand::seq::IteratorRandom as _;
 use serde_json::json;
 
 /// Reputation change for a node when we get disconnected from it.
 const DISCONNECT_REPUTATION_CHANGE: i32 = -10;
+/// At a regular interval, we disconnect a random node we're connected to in order to leave space
+/// for another node.
+const RANDOM_DISCONNECT_INTERVAL_SECS: u64 = 15;
 
 #[derive(Debug)]
 enum Action {
@@ -243,19 +247,19 @@ impl Peerset {
 	fn update_time(&mut self) {
 		// We basically do `(now - self.latest_update).as_secs()`, except that by the way we do it
 		// we know that we're not going to miss seconds because of rounding to integers.
-		let secs_diff = {
+		let secs_range = {
 			let now = Instant::now();
 			let elapsed_latest = self.latest_time_update - self.created;
 			let elapsed_now = now - self.created;
 			self.latest_time_update = now;
-			elapsed_now.as_secs() - elapsed_latest.as_secs()
+			elapsed_latest.as_secs() .. elapsed_now.as_secs()
 		};
 
 		// For each elapsed second, move the node reputation towards zero.
 		// If we multiply each second the reputation by `k` (where `k` is between 0 and 1), it
 		// takes `ln(0.5) / ln(k)` seconds to reduce the reputation by half. Use this formula to
 		// empirically determine a value of `k` that looks correct.
-		for _ in 0..secs_diff {
+		for sec_num in secs_range {
 			for peer in self.data.peers().cloned().collect::<Vec<_>>() {
 				// We use `k = 0.98`, so we divide by `50`. With that value, it takes 34.3 seconds
 				// to reduce the reputation by half.
@@ -274,6 +278,18 @@ impl Peerset {
 					peersstate::Peer::NotConnected(mut peer) =>
 						peer.set_reputation(reput_tick(peer.reputation())),
 					peersstate::Peer::Unknown(_) => unreachable!("We iterate over known peers; qed")
+				}
+			}
+
+			// At a regular interval, we randomly disconnect a node.
+			if (sec_num % RANDOM_DISCONNECT_INTERVAL_SECS) == 0 {
+				if let Some(to_dc) = self.data.connected_peers().choose(&mut rand::thread_rng()).cloned() {
+					if let Some(conn) = self.data.peer(&to_dc).into_connected() {
+						conn.disconnect();
+						self.message_queue.push_back(Message::Drop(to_dc));
+					} else {
+						error!(target: "peerset", "State inconsistency: connected node isn't connected")
+					}
 				}
 			}
 		}
