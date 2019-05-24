@@ -1291,21 +1291,21 @@ dependencies = [
 [[package]]
 name = "kvdb"
 version = "0.1.0"
-source = "git+https://github.com/paritytech/parity-common?rev=b0317f649ab2c665b7987b8475878fc4d2e1f81d#b0317f649ab2c665b7987b8475878fc4d2e1f81d"
+source = "git+https://github.com/paritytech/parity-common?rev=953c757737a689c8210055160048cf36661a6347#953c757737a689c8210055160048cf36661a6347"
 dependencies = [
  "elastic-array 0.10.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "parity-bytes 0.1.0 (git+https://github.com/paritytech/parity-common?rev=b0317f649ab2c665b7987b8475878fc4d2e1f81d)",
+ "parity-bytes 0.1.0 (git+https://github.com/paritytech/parity-common?rev=953c757737a689c8210055160048cf36661a6347)",
 ]
 
 [[package]]
 name = "kvdb-rocksdb"
 version = "0.1.4"
-source = "git+https://github.com/paritytech/parity-common?rev=b0317f649ab2c665b7987b8475878fc4d2e1f81d#b0317f649ab2c665b7987b8475878fc4d2e1f81d"
+source = "git+https://github.com/paritytech/parity-common?rev=953c757737a689c8210055160048cf36661a6347#953c757737a689c8210055160048cf36661a6347"
 dependencies = [
  "elastic-array 0.10.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "fs-swap 0.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "interleaved-ordered 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "kvdb 0.1.0 (git+https://github.com/paritytech/parity-common?rev=b0317f649ab2c665b7987b8475878fc4d2e1f81d)",
+ "kvdb 0.1.0 (git+https://github.com/paritytech/parity-common?rev=953c757737a689c8210055160048cf36661a6347)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "num_cpus 1.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "parking_lot 0.6.4 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2111,7 +2111,7 @@ dependencies = [
 [[package]]
 name = "parity-bytes"
 version = "0.1.0"
-source = "git+https://github.com/paritytech/parity-common?rev=b0317f649ab2c665b7987b8475878fc4d2e1f81d#b0317f649ab2c665b7987b8475878fc4d2e1f81d"
+source = "git+https://github.com/paritytech/parity-common?rev=953c757737a689c8210055160048cf36661a6347#953c757737a689c8210055160048cf36661a6347"
 
 [[package]]
 name = "parity-codec"
@@ -3504,7 +3504,7 @@ dependencies = [
  "futures 0.1.26 (registry+https://github.com/rust-lang/crates.io-index)",
  "hash-db 0.12.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex-literal 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "kvdb 0.1.0 (git+https://github.com/paritytech/parity-common?rev=b0317f649ab2c665b7987b8475878fc4d2e1f81d)",
+ "kvdb 0.1.0 (git+https://github.com/paritytech/parity-common?rev=953c757737a689c8210055160048cf36661a6347)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "parity-codec 3.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "parking_lot 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3527,8 +3527,8 @@ name = "substrate-client-db"
 version = "1.0.0"
 dependencies = [
  "hash-db 0.12.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "kvdb 0.1.0 (git+https://github.com/paritytech/parity-common?rev=b0317f649ab2c665b7987b8475878fc4d2e1f81d)",
- "kvdb-rocksdb 0.1.4 (git+https://github.com/paritytech/parity-common?rev=b0317f649ab2c665b7987b8475878fc4d2e1f81d)",
+ "kvdb 0.1.0 (git+https://github.com/paritytech/parity-common?rev=953c757737a689c8210055160048cf36661a6347)",
+ "kvdb-rocksdb 0.1.4 (git+https://github.com/paritytech/parity-common?rev=953c757737a689c8210055160048cf36661a6347)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "lru-cache 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "parity-codec 3.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -4939,8 +4939,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum jsonrpc-ws-server 10.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "3889012aa638a2f18eb1a879f46fc8b34e7e1423cbff3247cd1531de0d51084b"
 "checksum keccak 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "67c21572b4949434e4fc1e1978b99c5f77064153c59d998bf13ecd96fb5ecba7"
 "checksum kernel32-sys 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "7507624b29483431c0ba2d82aece8ca6cdba9382bff4ddd0f7490560c056098d"
-"checksum kvdb 0.1.0 (git+https://github.com/paritytech/parity-common?rev=b0317f649ab2c665b7987b8475878fc4d2e1f81d)" = "<none>"
-"checksum kvdb-rocksdb 0.1.4 (git+https://github.com/paritytech/parity-common?rev=b0317f649ab2c665b7987b8475878fc4d2e1f81d)" = "<none>"
+"checksum kvdb 0.1.0 (git+https://github.com/paritytech/parity-common?rev=953c757737a689c8210055160048cf36661a6347)" = "<none>"
+"checksum kvdb-rocksdb 0.1.4 (git+https://github.com/paritytech/parity-common?rev=953c757737a689c8210055160048cf36661a6347)" = "<none>"
 "checksum language-tags 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "a91d884b6667cd606bb5a69aa0c99ba811a115fc68915e7056ec08a46e93199a"
 "checksum lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "bc5729f27f159ddd61f4df6228e827e86643d4d3e7c32183cb30a1c08f604a14"
 "checksum lazycell 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "b294d6fa9ee409a054354afc4352b0b9ef7ca222c69b8812cbea9e7d2bf3783f"
@@ -5002,7 +5002,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum openssl-sys 0.9.46 (registry+https://github.com/rust-lang/crates.io-index)" = "05636e06b4f8762d4b81d24a351f3966f38bd25ccbcfd235606c91fdb82cc60f"
 "checksum owning_ref 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)" = "cdf84f41639e037b484f93433aa3897863b561ed65c6e59c7073d7c561710f37"
 "checksum owning_ref 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "49a4b8ea2179e6a2e27411d3bca09ca6dd630821cf6894c6c7c8467a8ee7ef13"
-"checksum parity-bytes 0.1.0 (git+https://github.com/paritytech/parity-common?rev=b0317f649ab2c665b7987b8475878fc4d2e1f81d)" = "<none>"
+"checksum parity-bytes 0.1.0 (git+https://github.com/paritytech/parity-common?rev=953c757737a689c8210055160048cf36661a6347)" = "<none>"
 "checksum parity-codec 3.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "dcb43c05fb71c03b4ea7327bf15694da1e0f23f19d5b1e95bab6c6d74097e336"
 "checksum parity-codec-derive 3.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "00a486fd383382ddcb2de928364b1f82571c1e48274fc43b7667a4738ee4056c"
 "checksum parity-crypto 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "cf1b9c063d87e1507cb3807493c8d21859ef23b5414b39f81c53f0ba267d64c1"

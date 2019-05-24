@@ -18,6 +18,7 @@ exit-future = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sysinfo = "0.9.0"
+libp2p = { version = "0.12.0", default-features = false }
 target_info = "0.1"
 keystore = { package = "substrate-keystore", path = "../../core/keystore" }
 sr-io = { path = "../../core/sr-io" }
@@ -28,7 +29,7 @@ app-crypto = { package = "substrate-application-crypto", path = "../application-
 consensus_common = { package = "substrate-consensus-common", path = "../../core/consensus/common" }
 network = { package = "substrate-network", path = "../../core/network" }
 client = { package = "substrate-client", path = "../../core/client" }
-client_db = { package = "substrate-client-db", path = "../../core/client/db", features = ["kvdb-rocksdb"] }
+client_db = { package = "substrate-client-db", path = "../../core/client/db" }
 codec = { package = "parity-scale-codec", version = "1.0.0" }
 substrate-executor = { path = "../../core/executor" }
 substrate-authority-discovery = { path = "../../core/authority-discovery"}
@@ -39,6 +40,7 @@ tel = { package = "substrate-telemetry", path = "../../core/telemetry" }
 offchain = { package = "substrate-offchain", path = "../../core/offchain" }
 parity-multiaddr = { package = "parity-multiaddr", version = "0.5.0" }
 authority-discovery-primitives = { package = "substrate-authority-discovery-primitives", path = "../authority-discovery/primitives", default-features = false }
+wasm-timer = "0.1.1"
 
 [dev-dependencies]
 substrate-test-runtime-client = { path = "../test-runtime/client" }

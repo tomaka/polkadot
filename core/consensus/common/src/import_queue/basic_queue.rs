@@ -16,7 +16,7 @@
 
 use std::{mem, pin::Pin, time::Duration};
 use futures::{prelude::*, channel::mpsc, task::SpawnExt as _, task::Context, task::Poll};
-use futures_timer::Delay;
+use wasm_timer::Delay;
 use sr_primitives::{Justification, traits::{Block as BlockT, Header as HeaderT, NumberFor}};
 
 use crate::block_import::BlockOrigin;
@@ -155,7 +155,7 @@ impl<B: BlockT> BlockImportWorker<B> {
 			result_sender,
 			justification_import,
 			finality_proof_import,
-			delay_between_blocks: Duration::new(0, 0),
+			delay_between_blocks: Duration::new(0, 1),		// TODO:
 		};
 
 		// Let's initialize `justification_import` and `finality_proof_import`.

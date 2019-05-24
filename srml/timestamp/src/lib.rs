@@ -165,7 +165,7 @@ impl ProvideInherentData for InherentDataProvider {
 	}
 
 	fn provide_inherent_data(&self, inherent_data: &mut InherentData) -> Result<(), RuntimeString> {
-		use std::time::SystemTime;
+		use wasm_timer::SystemTime;
 
 		let now = SystemTime::now();
 		now.duration_since(SystemTime::UNIX_EPOCH)

@@ -30,10 +30,11 @@ use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use serde::{Serialize, de::DeserializeOwned};
 use futures::sync::mpsc;
 use parking_lot::Mutex;
+use wasm_timer::Instant;
 
 use client::{runtime_api::BlockT, Client};
 use exit_future::Signal;
@@ -95,9 +96,9 @@ pub struct NewService<TBl, TCl, TSc, TNetStatus, TNet, TTxPool, TOc> {
 	_rpc: Box<dyn std::any::Any + Send + Sync>,
 	_telemetry: Option<tel::Telemetry>,
 	_telemetry_on_connect_sinks: Arc<Mutex<Vec<mpsc::UnboundedSender<()>>>>,
-	_offchain_workers: Option<Arc<TOc>>,
+	//_offchain_workers: Option<Arc<TOc>>,
 	keystore: keystore::KeyStorePtr,
-	marker: PhantomData<TBl>,
+	marker: PhantomData<(TBl, TOc)>,
 }
 
 /// A set of traits for the runtime genesis config.
@@ -432,10 +433,10 @@ macro_rules! new_impl {
 			rpc_handlers,
 			_rpc: rpc,
 			_telemetry: telemetry,
-			_offchain_workers: offchain_workers,
+			//_offchain_workers: offchain_workers,
 			_telemetry_on_connect_sinks: telemetry_connection_sinks.clone(),
 			keystore,
-			marker: PhantomData::<$block>,
+			marker: PhantomData::<($block, _)>,
 		})
 	}}
 }
@@ -670,7 +671,7 @@ fn build_network_future<
 
 	// Interval at which we send status updates on the status stream.
 	const STATUS_INTERVAL: Duration = Duration::from_millis(5000);
-	let mut status_interval = tokio_timer::Interval::new_interval(STATUS_INTERVAL);
+	let mut status_interval = wasm_timer::Interval::new_interval(STATUS_INTERVAL);
 
 	let mut imported_blocks_stream = client.import_notification_stream().fuse()
 		.map(|v| Ok::<_, ()>(v)).compat();
@@ -760,7 +761,7 @@ fn build_network_future<
 		let polling_dur = before_polling.elapsed();
 		log!(
 			target: "service",
-			if polling_dur >= Duration::from_millis(50) { Level::Debug } else { Level::Trace },
+			if polling_dur >= Duration::from_millis(500) { Level::Debug } else { Level::Trace },
 			"Polling the network future took {:?}",
 			polling_dur
 		);
@@ -842,15 +843,16 @@ fn start_rpc_servers<C, G, H: FnMut() -> rpc_servers::RpcHandler<rpc::Metadata>>
 
 /// Starts RPC servers that run in their own thread, and returns an opaque object that keeps them alive.
 #[cfg(target_os = "unknown")]
-fn start_rpc_servers<C, G, H: FnMut() -> components::RpcHandler>(
-	_: &Configuration<C, G>,
-	_: H
-) -> Result<Box<std::any::Any + Send + Sync>, error::Error> {
+fn start_rpc_servers<C, G, H: FnMut() -> rpc_servers::RpcHandler<rpc::Metadata>>(
+	config: &Configuration<C, G>,
+	mut gen_handler: H
+) -> Result<Box<dyn std::any::Any + Send + Sync>, error::Error> {
 	Ok(Box::new(()))
 }
 
 /// An RPC session. Used to perform in-memory RPC queries (ie. RPC queries that don't go through
 /// the HTTP or WebSockets server).
+#[derive(Clone)]
 pub struct RpcSession {
 	metadata: rpc::Metadata,
 }

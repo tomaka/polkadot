@@ -17,13 +17,11 @@
 //! Db-based backend utility structures and functions, used by both
 //! full and light storages.
 
-#[cfg(feature = "kvdb-rocksdb")]
 use std::sync::Arc;
 use std::{io, convert::TryInto};
 
 use kvdb::{KeyValueDB, DBTransaction};
-#[cfg(feature = "kvdb-rocksdb")]
-use kvdb_rocksdb::{Database, DatabaseConfig};
+use kvdb_web::Database;
 use log::debug;
 
 use client;
@@ -34,8 +32,6 @@ use sr_primitives::traits::{
 	Block as BlockT, Header as HeaderT, Zero,
 	UniqueSaturatedFrom, UniqueSaturatedInto,
 };
-#[cfg(feature = "kvdb-rocksdb")]
-use crate::DatabaseSettings;
 
 /// Number of columns in the db. Must be the same for both full && light dbs.
 /// Otherwise RocksDb will fail to open database && check its type.
@@ -206,16 +202,11 @@ pub fn db_err(err: io::Error) -> client::error::Error {
 }
 
 /// Open RocksDB database.
-#[cfg(feature = "kvdb-rocksdb")]
 pub fn open_database(
-	config: &DatabaseSettings,
 	col_meta: Option<u32>,
 	db_type: &str
 ) -> client::error::Result<Arc<dyn KeyValueDB>> {
-	let mut db_config = DatabaseConfig::with_columns(Some(NUM_COLUMNS));
-	db_config.memory_budget = config.cache_size;
-	let path = config.path.to_str().ok_or_else(|| client::error::Error::Backend("Invalid database path".into()))?;
-	let db = Database::open(&db_config, &path).map_err(db_err)?;
+	let db = Database::open("db".to_string(), NUM_COLUMNS);
 
 	// check database type
 	match db.get(col_meta, meta_keys::TYPE).map_err(db_err)? {
@@ -232,7 +223,7 @@ pub fn open_database(
 		},
 	}
 
-	Ok(Arc::new(db))
+	Ok(db as Arc<_>)
 }
 
 /// Read database column entry for the given block.

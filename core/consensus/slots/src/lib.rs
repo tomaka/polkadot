@@ -33,7 +33,6 @@ pub use aux_schema::{check_equivocation, MAX_SLOT_CAPACITY, PRUNING_BOUND};
 use codec::{Decode, Encode};
 use consensus_common::{BlockImport, Proposer, SyncOracle, SelectChain};
 use futures::{prelude::*, future::{self, Either}};
-use futures_timer::Delay;
 use inherents::{InherentData, InherentDataProviders};
 use log::{debug, error, info, warn};
 use sr_primitives::generic::BlockId;
@@ -41,6 +40,7 @@ use sr_primitives::traits::{ApiRef, Block as BlockT, Header, ProvideRuntimeApi};
 use std::{fmt::Debug, ops::Deref, pin::Pin, sync::Arc};
 use substrate_telemetry::{telemetry, CONSENSUS_DEBUG, CONSENSUS_WARN, CONSENSUS_INFO};
 use parking_lot::Mutex;
+use wasm_timer::Delay;
 
 /// A worker that should be invoked at every new slot.
 pub trait SlotWorker<B: BlockT> {

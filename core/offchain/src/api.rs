@@ -33,7 +33,7 @@ use primitives::offchain::{
 use sr_primitives::{generic::BlockId, traits::{self, Extrinsic}};
 use transaction_pool::txpool::{Pool, ChainApi};
 
-mod http;
+//mod http;
 mod timestamp;
 
 /// A message between the offchain extension and the processing thread.
@@ -51,8 +51,8 @@ pub(crate) struct Api<Storage, Block: traits::Block> {
 	_at: BlockId<Block>,
 	/// Is this node a potential validator?
 	is_validator: bool,
-	/// Everything HTTP-related is handled by a different struct.
-	http: http::HttpApi,
+	///// Everything HTTP-related is handled by a different struct.
+	//http: http::HttpApi,
 }
 
 fn unavailable_yet<R: Default>(name: &str) -> R {
@@ -139,7 +139,7 @@ where
 		uri: &str,
 		_meta: &[u8]
 	) -> Result<HttpRequestId, ()> {
-		self.http.request_start(method, uri)
+		unimplemented!()//self.http.request_start(method, uri)
 	}
 
 	fn http_request_add_header(
@@ -148,7 +148,7 @@ where
 		name: &str,
 		value: &str
 	) -> Result<(), ()> {
-		self.http.request_add_header(request_id, name, value)
+		unimplemented!()//self.http.request_add_header(request_id, name, value)
 	}
 
 	fn http_request_write_body(
@@ -157,7 +157,7 @@ where
 		chunk: &[u8],
 		deadline: Option<Timestamp>
 	) -> Result<(), HttpError> {
-		self.http.request_write_body(request_id, chunk, deadline)
+		unimplemented!()//self.http.request_write_body(request_id, chunk, deadline)
 	}
 
 	fn http_response_wait(
@@ -165,14 +165,14 @@ where
 		ids: &[HttpRequestId],
 		deadline: Option<Timestamp>
 	) -> Vec<HttpRequestStatus> {
-		self.http.response_wait(ids, deadline)
+		unimplemented!()//self.http.response_wait(ids, deadline)
 	}
 
 	fn http_response_headers(
 		&mut self,
 		request_id: HttpRequestId
 	) -> Vec<(Vec<u8>, Vec<u8>)> {
-		self.http.response_headers(request_id)
+		unimplemented!()//self.http.response_headers(request_id)
 	}
 
 	fn http_response_read_body(
@@ -181,7 +181,7 @@ where
 		buffer: &mut [u8],
 		deadline: Option<Timestamp>
 	) -> Result<usize, HttpError> {
-		self.http.response_read_body(request_id, buffer, deadline)
+		unimplemented!()//self.http.response_read_body(request_id, buffer, deadline)
 	}
 }
 
@@ -257,8 +257,8 @@ pub(crate) struct AsyncApi<A: ChainApi> {
 	receiver: Option<mpsc::UnboundedReceiver<ExtMessage>>,
 	transaction_pool: Arc<Pool<A>>,
 	at: BlockId<A::Block>,
-	/// Everything HTTP-related is handled by a different struct.
-	http: Option<http::HttpWorker>,
+	///// Everything HTTP-related is handled by a different struct.
+	//http: Option<http::HttpWorker>,
 }
 
 impl<A: ChainApi> AsyncApi<A> {
@@ -272,7 +272,7 @@ impl<A: ChainApi> AsyncApi<A> {
 	) -> (Api<S, A::Block>, AsyncApi<A>) {
 		let (sender, rx) = mpsc::unbounded();
 
-		let (http_api, http_worker) = http::http();
+		//let (http_api, http_worker) = http::http();
 
 		let api = Api {
 			sender,
@@ -280,14 +280,14 @@ impl<A: ChainApi> AsyncApi<A> {
 			network_state,
 			_at: at,
 			is_validator,
-			http: http_api,
+			//http: http_api,
 		};
 
 		let async_api = AsyncApi {
 			receiver: Some(rx),
 			transaction_pool,
 			at,
-			http: Some(http_worker),
+			//http: Some(http_worker),
 		};
 
 		(api, async_api)
@@ -296,7 +296,7 @@ impl<A: ChainApi> AsyncApi<A> {
 	/// Run a processing task for the API
 	pub fn process(mut self) -> impl Future<Output = ()> {
 		let receiver = self.receiver.take().expect("Take invoked only once.");
-		let http = self.http.take().expect("Take invoked only once.");
+		//let http = self.http.take().expect("Take invoked only once.");
 
 		let extrinsics = receiver.for_each(move |msg| {
 			match msg {
@@ -305,8 +305,9 @@ impl<A: ChainApi> AsyncApi<A> {
 			future::ready(())
 		});
 
-		future::join(extrinsics, http)
-			.map(|((), ())| ())
+		extrinsics
+		/*future::join(extrinsics, http)
+			.map(|((), ())| ())*/
 	}
 
 	fn submit_extrinsic(&mut self, ext: Vec<u8>) {

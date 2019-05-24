@@ -59,7 +59,7 @@
 #![forbid(unsafe_code, missing_docs)]
 pub use babe_primitives::*;
 pub use consensus_common::SyncOracle;
-use std::{collections::HashMap, sync::Arc, u64, pin::Pin, time::{Instant, Duration}};
+use std::{collections::HashMap, sync::Arc, u64, pin::Pin, time::Duration};
 use babe_primitives;
 use consensus_common::ImportResult;
 use consensus_common::import_queue::{
@@ -110,6 +110,7 @@ use slots::{CheckedHeader, check_equivocation};
 use futures::prelude::*;
 use futures01::Stream as _;
 use log::{error, warn, debug, info, trace};
+use wasm_timer::Instant;
 
 use slots::{SlotWorker, SlotData, SlotInfo, SlotCompatible};
 

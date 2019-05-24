@@ -1,0 +1,55 @@
+[package]
+name = "node-browser"
+version = "2.0.0"
+authors = ["Parity Technologies <admin@parity.io>"]
+description = "Substrate node library that can be used from JavaScript."
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+libp2p = { version = "0.12.0", default-features = false }
+log = "0.4"
+futures = "0.1"
+exit-future = "0.1"
+jsonrpc-core = "13.2.0"
+node-rpc = { path = "../node/rpc" }
+parity-codec = { version = "3.3" }
+sr-io = { path = "../core/sr-io" }
+client = { package = "substrate-client", path = "../core/client" }
+primitives = { package = "substrate-primitives", path = "../core/primitives" }
+inherents = { package = "substrate-inherents", path = "../core/inherents" }
+node-runtime = { path = "../node/runtime" }
+node-primitives = { path = "../node/primitives" }
+hex-literal = "0.2"
+substrate-basic-authorship = { path = "../core/basic-authorship" }
+substrate-service = { path = "../core/service" }
+substrate-rpc = { package = "substrate-rpc", path = "../core/rpc" }
+transaction_pool = { package = "substrate-transaction-pool", path = "../core/transaction-pool" }
+network = { package = "substrate-network", path = "../core/network" }
+grandpa = { package = "substrate-finality-grandpa", path = "../core/finality-grandpa" }
+grandpa_primitives = { package = "substrate-finality-grandpa-primitives", path = "../core/finality-grandpa/primitives" }
+sr-primitives = { path = "../core/sr-primitives" }
+babe = { package = "substrate-consensus-babe", path = "../core/consensus/babe" }
+babe-primitives = { package = "substrate-consensus-babe-primitives", path = "../core/consensus/babe/primitives" }
+node-executor = { path = "../node/executor" }
+substrate-cli = { package = "substrate-cli", path = "../core/cli" }
+substrate-keystore = { path = "../core/keystore" }
+substrate-telemetry = { package = "substrate-telemetry", path = "../core/telemetry" }
+structopt = "0.2"
+keyring = { package = "substrate-keyring", path = "../core/keyring" }
+indices = { package = "srml-indices", path = "../srml/indices" }
+timestamp = { package = "srml-timestamp", path = "../srml/timestamp", default-features = false }
+rand = { version = "0.6", features = ["wasm-bindgen"] }
+finality_tracker = { package = "srml-finality-tracker", path = "../srml/finality-tracker", default-features = false }
+contracts = { package = "srml-contracts", path = "../srml/contracts" }
+im_online = { package = "srml-im-online", path = "../srml/im-online", default-features = false }
+sr-authority-discovery = { package = "srml-authority-discovery", path = "../srml/authority-discovery", default-features = false }
+authority-discovery = { package = "substrate-authority-discovery", path = "../core/authority-discovery"}
+clear_on_drop = { version = "0.2.3", features = ["no_cc"] }
+console_error_panic_hook = "0.1.1"
+console_log = "0.1.2"
+js-sys = "0.3.22"
+wasm-bindgen = "0.2.45"
+wasm-bindgen-futures = "0.3.22"

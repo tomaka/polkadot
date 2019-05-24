@@ -25,9 +25,9 @@ use libp2p::identify::{Identify, IdentifyEvent, protocol::IdentifyInfo};
 use libp2p::ping::{Ping, PingConfig, PingEvent, PingSuccess};
 use log::{debug, trace, error};
 use std::collections::hash_map::Entry;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio_io::{AsyncRead, AsyncWrite};
-use futures_timer::Interval;
+use wasm_timer::{Instant, Interval};
 
 /// Time after we disconnect from a node before we purge its information from the cache.
 const CACHE_EXPIRE: Duration = Duration::from_secs(10 * 60);

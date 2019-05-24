@@ -755,13 +755,7 @@ impl<Block: BlockT<Hash=H256>> Backend<Block> {
 	}
 
 	fn new_inner(config: DatabaseSettings, canonicalization_delay: u64) -> Result<Self, client::error::Error> {
-		#[cfg(feature = "kvdb-rocksdb")]
-		let db = crate::utils::open_database(&config, columns::META, "full")?;
-		#[cfg(not(feature = "kvdb-rocksdb"))]
-		let db = {
-			log::warn!("Running without the RocksDB feature. The database will NOT be saved.");
-			Arc::new(kvdb_memorydb::create(crate::utils::NUM_COLUMNS))
-		};
+		let db = crate::utils::open_database(columns::META, "full")?;
 		Self::from_kvdb(db as Arc<_>, canonicalization_delay, &config)
 	}
 

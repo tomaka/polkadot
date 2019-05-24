@@ -385,7 +385,7 @@ impl<'a> ParseAndPrepareImport<'a> {
 		};
 
 		let fut = builder(config)?.import_blocks(exit.into_exit(), file)?;
-		tokio::run(fut);
+		panic!(); //tokio::run(fut);
 		Ok(())
 	}
 }
@@ -589,8 +589,9 @@ fn fill_network_configuration(
 }
 
 fn input_keystore_password() -> Result<String, String> {
-	rpassword::read_password_from_tty(Some("Keystore password: "))
-		.map_err(|e| format!("{:?}", e))
+	Err(String::new())
+	/*rpassword::read_password_from_tty(Some("Keystore password: "))
+		.map_err(|e| format!("{:?}", e))*/
 }
 
 /// Fill the password field of the given config instance.

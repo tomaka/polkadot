@@ -13,6 +13,7 @@ inherents = { package = "substrate-inherents", path = "../../core/inherents", de
 support = { package = "srml-support", path = "../support", default-features = false }
 system = { package = "srml-system", path = "../system", default-features = false }
 impl-trait-for-tuples = "0.1.1"
+wasm-timer = "0.1.2"
 
 [dev-dependencies]
 runtime-io ={ package = "sr-io", path = "../../core/sr-io" }
