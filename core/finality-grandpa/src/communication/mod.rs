@@ -295,7 +295,7 @@ impl<B: BlockT, N: Network<B>> NetworkBridge<B, N> {
 
 		let bridge = NetworkBridge { service, validator, neighbor_sender };
 
-		let startup_work = futures::future::lazy(move || {
+		let startup_work = rebroadcast_job.select(reporting_job)/* futures::future::lazy(move || {
 			// lazily spawn these jobs onto their own tasks. the lazy future has access
 			// to tokio globals, which aren't available outside.
 			let mut executor = tokio_executor::DefaultExecutor::current();
@@ -304,7 +304,7 @@ impl<B: BlockT, N: Network<B>> NetworkBridge<B, N> {
 			executor.spawn(Box::new(reporting_job.select(on_exit.clone()).then(|_| Ok(()))))
 				.expect("failed to spawn grandpa reporting job task");
 			Ok(())
-		});
+		})*/.then(|_| Ok(()));
 
 		(bridge, startup_work)
 	}

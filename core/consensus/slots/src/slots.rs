@@ -23,8 +23,8 @@ use consensus_common::Error;
 use futures::{prelude::*, task::Context, task::Poll};
 use inherents::{InherentData, InherentDataProviders};
 
-use std::{pin::Pin, time::{Duration, Instant}};
-use futures_timer::Delay;
+use std::{pin::Pin, time::Duration};
+use wasm_timer::{Delay, Instant};
 
 /// Returns current duration since unix epoch.
 pub fn duration_now() -> Duration {

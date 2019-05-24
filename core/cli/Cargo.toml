@@ -16,7 +16,7 @@ time = "0.1"
 ansi_term = "0.11"
 lazy_static = "1.3"
 app_dirs = "1.2"
-tokio = "0.1.7"
+#tokio = "0.1.7"
 futures = "0.1.17"
 futures03 = { package = "futures-preview", version = "0.3.0-alpha.17", features = ["compat"] }
 fdlimit = "0.1"
@@ -33,7 +33,8 @@ substrate-telemetry = { path = "../../core/telemetry" }
 keyring = { package = "substrate-keyring", path = "../keyring" }
 names = "0.11.0"
 structopt = "0.2"
-rpassword = "3.0"
+#rpassword = "3.0"
+wasm-timer = "0.1"
 
 [dev-dependencies]
 tempdir = "0.3"

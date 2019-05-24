@@ -15,6 +15,7 @@ consensus_common = { package = "substrate-consensus-common", path = "../../core/
 inherents = { package = "substrate-inherents", path = "../inherents" }
 substrate-telemetry = { path = "../telemetry" }
 transaction_pool = { package = "substrate-transaction-pool", path = "../../core/transaction-pool" }
+wasm-timer = "0.2.0"
 
 [dev-dependencies]
 test-client = { package = "substrate-test-runtime-client", path = "../../core/test-runtime/client" }

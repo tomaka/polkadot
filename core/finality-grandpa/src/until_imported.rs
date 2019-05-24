@@ -30,12 +30,12 @@ use futures03::{StreamExt as _, TryStreamExt as _};
 use grandpa::voter;
 use parking_lot::Mutex;
 use sr_primitives::traits::{Block as BlockT, Header as HeaderT, NumberFor};
-use tokio_timer::Interval;
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{atomic::{AtomicUsize, Ordering}, Arc};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use fg_primitives::AuthorityId;
+use wasm_timer::{Instant, Interval};
 
 const LOG_PENDING_INTERVAL: Duration = Duration::from_secs(15);
 

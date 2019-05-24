@@ -29,9 +29,10 @@ use std::io;
 use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use futures::sync::mpsc;
 use parking_lot::Mutex;
+use wasm_timer::Instant;
 
 use client::{BlockchainEvents, backend::Backend, runtime_api::BlockT};
 use exit_future::Signal;
@@ -102,12 +103,12 @@ pub struct Service<Components: components::Components> {
 	_rpc: Box<dyn std::any::Any + Send + Sync>,
 	_telemetry: Option<tel::Telemetry>,
 	_telemetry_on_connect_sinks: Arc<Mutex<Vec<mpsc::UnboundedSender<()>>>>,
-	_offchain_workers: Option<Arc<offchain::OffchainWorkers<
+	/*_offchain_workers: Option<Arc<offchain::OffchainWorkers<
 		ComponentClient<Components>,
 		ComponentOffchainStorage<Components>,
 		ComponentAuthorityKeyProvider<Components>,
 		ComponentBlock<Components>>
-	>>,
+	>>,*/
 }
 
 /// Creates bare client without any networking.
@@ -497,7 +498,7 @@ impl<Components: components::Components> Service<Components> {
 			rpc_handlers,
 			_rpc: rpc,
 			_telemetry: telemetry,
-			_offchain_workers: offchain_workers,
+			//_offchain_workers: offchain_workers,
 			_telemetry_on_connect_sinks: telemetry_connection_sinks.clone(),
 		})
 	}
@@ -640,7 +641,7 @@ fn build_network_future<
 ) -> impl Future<Item = (), Error = ()> {
 	// Interval at which we send status updates on the status stream.
 	const STATUS_INTERVAL: Duration = Duration::from_millis(5000);
-	let mut status_interval = tokio_timer::Interval::new_interval(STATUS_INTERVAL);
+	let mut status_interval = wasm_timer::Interval::new_interval(STATUS_INTERVAL);
 
 	let mut imported_blocks_stream = client.import_notification_stream().fuse()
 		.map(|v| Ok::<_, ()>(v)).compat();
@@ -718,7 +719,7 @@ fn build_network_future<
 		let polling_dur = before_polling.elapsed();
 		log!(
 			target: "service",
-			if polling_dur >= Duration::from_millis(50) { Level::Warn } else { Level::Trace },
+			if polling_dur >= Duration::from_millis(500) { Level::Warn } else { Level::Trace },
 			"Polling the network future took {:?}",
 			polling_dur
 		);
@@ -807,6 +808,7 @@ fn start_rpc_servers<F: ServiceFactory, H: FnMut() -> rpc::RpcHandler>(
 
 /// An RPC session. Used to perform in-memory RPC queries (ie. RPC queries that don't go through
 /// the HTTP or WebSockets server).
+#[derive(Clone)]
 pub struct RpcSession {
 	metadata: rpc::Metadata,
 }

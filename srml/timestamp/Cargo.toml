@@ -12,6 +12,7 @@ sr-primitives = { path = "../../core/sr-primitives", default-features = false }
 inherents = { package = "substrate-inherents", path = "../../core/inherents", default-features = false }
 srml-support = { path = "../support", default-features = false }
 system = { package = "srml-system", path = "../system", default-features = false }
+wasm-timer = "0.1.2"
 
 [dev-dependencies]
 runtime_io = { package = "sr-io", path = "../../core/sr-io" }

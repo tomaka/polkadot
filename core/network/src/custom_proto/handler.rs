@@ -18,7 +18,6 @@ use crate::custom_proto::upgrade::{RegisteredProtocol, RegisteredProtocolEvent, 
 use crate::protocol::message::Message;
 use futures::prelude::*;
 use futures03::{compat::Compat, TryFutureExt as _};
-use futures_timer::Delay;
 use libp2p::core::{ConnectedPoint, PeerId, Endpoint};
 use libp2p::core::upgrade::{InboundUpgrade, OutboundUpgrade};
 use libp2p::swarm::{
@@ -33,6 +32,7 @@ use sr_primitives::traits::Block as BlockT;
 use smallvec::{smallvec, SmallVec};
 use std::{borrow::Cow, error, fmt, io, marker::PhantomData, mem, time::Duration};
 use tokio_io::{AsyncRead, AsyncWrite};
+use wasm_timer::{Delay, Instant};
 
 /// Implements the `IntoProtocolsHandler` trait of libp2p.
 ///

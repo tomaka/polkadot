@@ -26,6 +26,7 @@ service = { package = "substrate-service", path = "../service", optional = true 
 srml-finality-tracker = { path = "../../srml/finality-tracker" }
 fg_primitives = { package = "substrate-finality-grandpa-primitives", path = "primitives" }
 grandpa = { package = "finality-grandpa", version = "0.8.1", features = ["derive-codec"] }
+wasm-timer = "0.1.1"
 
 [dev-dependencies]
 grandpa = { package = "finality-grandpa", version = "0.8.1", features = ["derive-codec", "test-helpers"] }

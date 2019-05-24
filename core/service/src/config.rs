@@ -25,6 +25,7 @@ use transaction_pool;
 use crate::chain_spec::ChainSpec;
 use primitives::crypto::Protected;
 use sr_primitives::BuildStorage;
+use libp2p::wasm_ext;
 use serde::{Serialize, de::DeserializeOwned};
 use target_info::Target;
 use tel::TelemetryEndpoints;

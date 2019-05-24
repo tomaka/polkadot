@@ -17,12 +17,12 @@
 use std::collections::VecDeque;
 use std::iter::FromIterator;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use wasm_timer::{Delay, Instant};
 
 use log::{debug, warn, info};
 use parity_codec::{Decode, Encode};
 use futures::prelude::*;
-use tokio_timer::Delay;
 use parking_lot::RwLock;
 
 use client::{

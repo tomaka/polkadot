@@ -362,8 +362,9 @@ fn fill_network_configuration(
 }
 
 fn input_keystore_password() -> Result<String, String> {
-	rpassword::read_password_from_tty(Some("Keystore password: "))
-		.map_err(|e| format!("{:?}", e))
+	Err(String::new())
+	/*rpassword::read_password_from_tty(Some("Keystore password: "))
+		.map_err(|e| format!("{:?}", e))*/
 }
 
 fn create_run_node_config<F, S>(
@@ -652,8 +653,8 @@ where
 	};
 
 	let fut = service::chain_ops::import_blocks::<F, _, _>(config, exit.into_exit(), file)?;
-	tokio::run(fut);
-	Ok(())
+	unimplemented!()
+	//tokio::run(fut);
 }
 
 fn revert_chain<F, S>(

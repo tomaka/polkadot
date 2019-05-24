@@ -233,7 +233,7 @@ pub struct ConsensusGossip<B: BlockT> {
 	messages: Vec<MessageEntry<B>>,
 	known_messages: LruCache<B::Hash, ()>,
 	validators: HashMap<ConsensusEngineId, Arc<dyn Validator<B>>>,
-	next_broadcast: time::Instant,
+	next_broadcast: wasm_timer::Instant,
 }
 
 impl<B: BlockT> ConsensusGossip<B> {
@@ -245,7 +245,7 @@ impl<B: BlockT> ConsensusGossip<B> {
 			messages: Default::default(),
 			known_messages: LruCache::new(KNOWN_MESSAGES_CACHE_SIZE),
 			validators: Default::default(),
-			next_broadcast: time::Instant::now() + REBROADCAST_INTERVAL,
+			next_broadcast: wasm_timer::Instant::now() + REBROADCAST_INTERVAL,
 		}
 	}
 
@@ -331,9 +331,9 @@ impl<B: BlockT> ConsensusGossip<B> {
 	/// Perform periodic maintenance
 	pub fn tick(&mut self, protocol: &mut dyn Context<B>) {
 		self.collect_garbage();
-		if time::Instant::now() >= self.next_broadcast {
+		if wasm_timer::Instant::now() >= self.next_broadcast {
 			self.rebroadcast(protocol);
-			self.next_broadcast = time::Instant::now() + REBROADCAST_INTERVAL;
+			self.next_broadcast = wasm_timer::Instant::now() + REBROADCAST_INTERVAL;
 		}
 	}
 

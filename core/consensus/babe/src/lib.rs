@@ -31,7 +31,7 @@ use sr_primitives::traits::{
 	Block as BlockT, Header, DigestItemFor, NumberFor, ProvideRuntimeApi,
 	SimpleBitOps, Zero,
 };
-use std::{collections::HashMap, sync::Arc, u64, fmt::{Debug, Display}, pin::Pin, time::{Instant, Duration}};
+use std::{collections::HashMap, sync::Arc, u64, fmt::{Debug, Display}, pin::Pin, time::Duration};
 use runtime_support::serde::{Serialize, Deserialize};
 use parity_codec::{Decode, Encode};
 use parking_lot::{Mutex, MutexGuard};
@@ -77,6 +77,7 @@ use futures::{prelude::*, future};
 use futures01::Stream as _;
 use futures_timer::Delay;
 use log::{error, warn, debug, info, trace};
+use wasm_timer::Instant;
 
 use slots::{SlotWorker, SlotData, SlotInfo, SlotCompatible, SignedDuration};
 

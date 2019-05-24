@@ -21,11 +21,11 @@ use futures::prelude::*;
 use futures::sync::mpsc;
 use sr_primitives::traits::{NumberFor, Block as BlockT};
 use network::PeerId;
-use tokio_timer::Delay;
 use log::warn;
 use parity_codec::Encode;
 
-use std::time::{Instant, Duration};
+use std::time::Duration;
+use wasm_timer::{Delay, Instant};
 
 // how often to rebroadcast, if no other
 const REBROADCAST_AFTER: Duration = Duration::from_secs(2 * 60);

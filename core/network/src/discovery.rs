@@ -46,7 +46,6 @@
 //!
 
 use futures::prelude::*;
-use futures_timer::Delay;
 use futures03::{compat::Compat, TryFutureExt as _};
 use libp2p::core::{ConnectedPoint, Multiaddr, PeerId, PublicKey};
 use libp2p::swarm::{ProtocolsHandler, NetworkBehaviour, NetworkBehaviourAction, PollParameters};
@@ -64,6 +63,7 @@ use libp2p::multiaddr::Protocol;
 use log::{debug, info, trace, warn};
 use std::{cmp, collections::VecDeque, time::Duration};
 use tokio_io::{AsyncRead, AsyncWrite};
+use wasm_timer::{Delay, Instant};
 
 /// Implementation of `NetworkBehaviour` that discovers the nodes on the network.
 pub struct DiscoveryBehaviour<TSubstream> {

@@ -32,6 +32,7 @@ use sr_primitives::{
 use crate::config::Configuration;
 use primitives::{Blake2Hasher, H256, Pair};
 use rpc::{self, apis::system::SystemInfo};
+use parking_lot::Mutex;
 use futures::{prelude::*, future::Executor, sync::mpsc};
 
 // Type aliases.

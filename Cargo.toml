@@ -86,6 +86,7 @@ members = [
 	"srml/system",
 	"srml/timestamp",
 	"srml/treasury",
+	"node-browser",
 	"node/cli",
 	"node/executor",
 	"node/primitives",

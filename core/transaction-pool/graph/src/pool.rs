@@ -189,7 +189,7 @@ impl<B: ChainApi> Pool<B> {
 				let removed = pool.enforce_limits(ready_limit, future_limit)
 					.into_iter().map(|x| x.hash.clone()).collect::<HashSet<_>>();
 				// ban all removed transactions
-				self.rotator.ban(&std::time::Instant::now(), removed.iter().map(|x| x.clone()));
+				self.rotator.ban(&wasm_timer::Instant::now(), removed.iter().map(|x| x.clone()));
 				removed
 			};
 			// run notifications
@@ -300,7 +300,7 @@ impl<B: ChainApi> Pool<B> {
 		// make sure that we don't revalidate extrinsics that were part of the recently
 		// imported block. This is especially important for UTXO-like chains cause the
 		// inputs are pruned so such transaction would go to future again.
-		self.rotator.ban(&std::time::Instant::now(), known_imported_hashes.clone().into_iter());
+		self.rotator.ban(&wasm_timer::Instant::now(), known_imported_hashes.clone().into_iter());
 
 		// try to re-submit pruned transactions since some of them might be still valid.
 		// note that `known_imported_hashes` will be rejected here due to temporary ban.
@@ -338,7 +338,7 @@ impl<B: ChainApi> Pool<B> {
 		let block_number = self.api.block_id_to_number(at)?
 				.ok_or_else(|| error::Error::InvalidBlockId(format!("{:?}", at)).into())?
 				.saturated_into::<u64>();
-		let now = time::Instant::now();
+		let now = wasm_timer::Instant::now();
 		let to_remove = {
 			self.ready()
 				.filter(|tx| self.rotator.ban_if_stale(&now, block_number, &tx))
@@ -395,7 +395,7 @@ impl<B: ChainApi> Pool<B> {
 	pub fn remove_invalid(&self, hashes: &[ExHash<B>]) -> Vec<TransactionFor<B>> {
 		// temporarily ban invalid transactions
 		debug!(target: "txpool", "Banning invalid transactions: {:?}", hashes);
-		self.rotator.ban(&time::Instant::now(), hashes.iter().cloned());
+		self.rotator.ban(&wasm_timer::Instant::now(), hashes.iter().cloned());
 
 		let invalid = self.pool.write().remove_invalid(hashes);
 
@@ -562,7 +562,7 @@ mod tests {
 		});
 
 		// when
-		pool.rotator.ban(&time::Instant::now(), vec![pool.hash_of(&uxt)]);
+		pool.rotator.ban(&wasm_timer::Instant::now(), vec![pool.hash_of(&uxt)]);
 		let res = pool.submit_one(&BlockId::Number(0), uxt);
 		assert_eq!(pool.status().ready, 0);
 		assert_eq!(pool.status().future, 0);
