@@ -189,6 +189,7 @@ impl<T: CustomMessage + Send + 'static> NetworkBehaviour for CustomProtoWithAddr
 }
 
 #[test]
+#[ignore]
 fn two_nodes_transfer_lots_of_packets() {
 	// We spawn two nodes, then make the first one send lots of packets to the second one. The test
 	// ends when the second one has received all of them.
@@ -237,6 +238,7 @@ fn two_nodes_transfer_lots_of_packets() {
 }
 
 #[test]
+#[ignore]
 fn basic_two_nodes_requests_in_parallel() {
 	let (mut service1, mut service2) = build_nodes::<MessageAlias<Block>>();
 
