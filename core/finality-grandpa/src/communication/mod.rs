@@ -34,10 +34,10 @@ use grandpa::Message::{Prevote, Precommit, PrimaryPropose};
 use futures::prelude::*;
 use futures::sync::{oneshot, mpsc};
 use log::{debug, trace};
+use tokio_executor::Executor;
 use parity_codec::{Encode, Decode};
 use substrate_primitives::{ed25519, Pair};
 use substrate_telemetry::{telemetry, CONSENSUS_DEBUG, CONSENSUS_INFO};
-use runtime_primitives::ConsensusEngineId;
 use runtime_primitives::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use network::{consensus_gossip as network_gossip, NetworkService};
 use network_gossip::ConsensusMessage;
@@ -55,8 +55,7 @@ mod periodic;
 #[cfg(test)]
 mod tests;
 
-/// The consensus engine ID of GRANDPA.
-pub const GRANDPA_ENGINE_ID: ConsensusEngineId = [b'a', b'f', b'g', b'1'];
+pub use fg_primitives::GRANDPA_ENGINE_ID;
 
 // cost scalars for reporting peers.
 mod cost {
@@ -64,12 +63,14 @@ mod cost {
 	pub(super) const BAD_SIGNATURE: i32 = -100;
 	pub(super) const MALFORMED_COMMIT: i32 = -1000;
 	pub(super) const FUTURE_MESSAGE: i32 = -500;
+	pub(super) const UNKNOWN_VOTER: i32 = -150;
 
 	pub(super) const INVALID_VIEW_CHANGE: i32 = -500;
 	pub(super) const PER_UNDECODABLE_BYTE: i32 = -5;
 	pub(super) const PER_SIGNATURE_CHECKED: i32 = -25;
 	pub(super) const PER_BLOCK_LOADED: i32 = -10;
 	pub(super) const INVALID_COMMIT: i32 = -5000;
+	pub(super) const OUT_OF_SCOPE_MESSAGE: i32 = -500;
 }
 
 // benefit scalars for reporting peers.
@@ -125,9 +126,10 @@ pub(crate) fn global_topic<B: BlockT>(set_id: u64) -> B::Hash {
 	<<B::Header as HeaderT>::Hashing as HashT>::hash(format!("{}-GLOBAL", set_id).as_bytes())
 }
 
-impl<B, S> Network<B> for Arc<NetworkService<B, S>> where
+impl<B, S, H> Network<B> for Arc<NetworkService<B, S, H>> where
 	B: BlockT,
 	S: network::specialization::NetworkSpecialization<B>,
+	H: network::ExHashT,
 {
 	type In = NetworkStream;
 
@@ -233,7 +235,7 @@ impl<B: BlockT, N: Network<B>> NetworkBridge<B, N> {
 	pub(crate) fn new(
 		service: N,
 		config: crate::Config,
-		set_state: Option<(u64, &crate::environment::VoterSetState<B>)>,
+		set_state: Option<&crate::environment::VoterSetState<B>>,
 		on_exit: impl Future<Item=(),Error=()> + Clone + Send + 'static,
 	) -> (
 		Self,
@@ -244,15 +246,18 @@ impl<B: BlockT, N: Network<B>> NetworkBridge<B, N> {
 		let validator = Arc::new(validator);
 		service.register_validator(validator.clone());
 
-		if let Some((set_id, set_state)) = set_state {
+		if let Some(set_state) = set_state {
 			// register all previous votes with the gossip service so that they're
 			// available to peers potentially stuck on a previous round.
-			for round in set_state.completed_rounds().iter() {
+			let completed = set_state.completed_rounds();
+			let (set_id, voters) = completed.set_info();
+			validator.note_set(SetId(set_id), voters.to_vec(), |_, _| {});
+			for round in completed.iter() {
 				let topic = round_topic::<B>(round.number, set_id);
 
 				// we need to note the round with the gossip validator otherwise
 				// messages will be ignored.
-				validator.note_round(Round(round.number), SetId(set_id), |_, _| {});
+				validator.note_round(Round(round.number), |_, _| {});
 
 				for signed in round.votes.iter() {
 					let message = gossip::GossipMessage::VoteOrPrecommit(
@@ -287,15 +292,18 @@ impl<B: BlockT, N: Network<B>> NetworkBridge<B, N> {
 		let startup_work = futures::future::lazy(move || {
 			// lazily spawn these jobs onto their own tasks. the lazy future has access
 			// to tokio globals, which aren't available outside.
-			tokio::spawn(rebroadcast_job.select(on_exit.clone()).then(|_| Ok(())));
-			tokio::spawn(reporting_job.select(on_exit.clone()).then(|_| Ok(())));
+			let mut executor = tokio_executor::DefaultExecutor::current();
+			executor.spawn(Box::new(rebroadcast_job.select(on_exit.clone()).then(|_| Ok(()))))
+				.expect("failed to spawn grandpa rebroadcast job task");
+			executor.spawn(Box::new(reporting_job.select(on_exit.clone()).then(|_| Ok(()))))
+				.expect("failed to spawn grandpa reporting job task");
 			Ok(())
 		});
 
 		(bridge, startup_work)
 	}
 
-	/// Get the round messages for a round in a given set ID. These are signature-checked.
+	/// Get the round messages for a round in the current set ID. These are signature-checked.
 	pub(crate) fn round_communication(
 		&self,
 		round: Round,
@@ -307,9 +315,18 @@ impl<B: BlockT, N: Network<B>> NetworkBridge<B, N> {
 		impl Stream<Item=SignedMessage<B>,Error=Error>,
 		impl Sink<SinkItem=Message<B>,SinkError=Error>,
 	) {
+		// is a no-op if currently in that set.
+		self.validator.note_set(
+			set_id,
+			voters.voters().iter().map(|(v, _)| v.clone()).collect(),
+			|to, neighbor| self.service.send_message(
+				to,
+				GossipMessage::<B>::from(neighbor).encode()
+			),
+		);
+
 		self.validator.note_round(
 			round,
-			set_id,
 			|to, neighbor| self.service.send_message(
 				to,
 				GossipMessage::<B>::from(neighbor).encode()
@@ -410,6 +427,7 @@ impl<B: BlockT, N: Network<B>> NetworkBridge<B, N> {
 	) {
 		self.validator.note_set(
 			set_id,
+			voters.voters().iter().map(|(v, _)| v.clone()).collect(),
 			|to, neighbor| self.service.send_message(to, GossipMessage::<B>::from(neighbor).encode()),
 		);
 
@@ -650,7 +668,7 @@ fn check_compact_commit<Block: BlockT>(
 	let f = voters.total_weight() - voters.threshold();
 	let full_threshold = voters.total_weight() + f;
 
-	// check total weight is not too high.
+	// check total weight is not out of range.
 	let mut total_weight = 0;
 	for (_, ref id) in &msg.auth_data {
 		if let Some(weight) = voters.info(id).map(|info| info.weight()) {

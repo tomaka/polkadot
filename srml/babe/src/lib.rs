@@ -17,19 +17,22 @@
 //! Consensus extension module for BABE consensus.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![forbid(unsafe_code, warnings)]
+#![forbid(unsafe_code)]
 pub use timestamp;
 
 use rstd::{result, prelude::*};
-use srml_support::{decl_storage, decl_module};
+use srml_support::{decl_storage, decl_module, StorageValue};
 use timestamp::{OnTimestampSet, Trait};
-use primitives::traits::{SaturatedConversion, Saturating};
+use primitives::{generic::DigestItem, traits::{SaturatedConversion, Saturating}};
 #[cfg(feature = "std")]
 use timestamp::TimestampInherentData;
-use parity_codec::Decode;
+use parity_codec::{Encode, Decode};
 use inherents::{RuntimeString, InherentIdentifier, InherentData, ProvideInherent, MakeFatalError};
 #[cfg(feature = "std")]
 use inherents::{InherentDataProviders, ProvideInherentData};
+use babe_primitives::BABE_ENGINE_ID;
+
+pub use babe_primitives::AuthorityId;
 
 /// The BABE inherent identifier.
 pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"babeslot";
@@ -105,8 +108,11 @@ impl ProvideInherentData for InherentDataProvider {
 
 decl_storage! {
 	trait Store for Module<T: Trait> as Babe {
-		// The last timestamp.
+		/// The last timestamp.
 		LastTimestamp get(last): T::Moment;
+
+		/// The current authorities set.
+		Authorities get(authorities): Vec<AuthorityId>;
 	}
 }
 
@@ -125,6 +131,34 @@ impl<T: Trait> Module<T> {
 
 impl<T: Trait> OnTimestampSet<T::Moment> for Module<T> {
 	fn on_timestamp_set(_moment: T::Moment) { }
+}
+
+impl<T: Trait> Module<T> {
+	fn change_authorities(new: Vec<AuthorityId>) {
+		Authorities::put(&new);
+
+		let log: DigestItem<T::Hash> = DigestItem::Consensus(BABE_ENGINE_ID, new.encode());
+		<system::Module<T>>::deposit_log(log.into());
+	}
+}
+
+impl<T: Trait> session::OneSessionHandler<T::AccountId> for Module<T> {
+	type Key = AuthorityId;
+	fn on_new_session<'a, I: 'a>(changed: bool, validators: I)
+	where I: Iterator<Item=(&'a T::AccountId, AuthorityId)>
+	{
+		// instant changes
+		if changed {
+			let next_authorities = validators.map(|(_, k)| k).collect::<Vec<_>>();
+			let last_authorities = <Module<T>>::authorities();
+			if next_authorities != last_authorities {
+				Self::change_authorities(next_authorities);
+			}
+		}
+	}
+	fn on_disabled(_i: usize) {
+		// ignore?
+	}
 }
 
 impl<T: Trait> ProvideInherent for Module<T> {

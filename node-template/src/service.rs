@@ -9,11 +9,11 @@ use node_template_runtime::{self, GenesisConfig, opaque::Block, RuntimeApi};
 use substrate_service::{
 	FactoryFullConfiguration, LightComponents, FullComponents, FullBackend,
 	FullClient, LightClient, LightBackend, FullExecutor, LightExecutor,
-	TaskExecutor,
 	error::{Error as ServiceError},
 };
 use basic_authorship::ProposerFactory;
-use consensus::{import_queue, start_aura, AuraImportQueue, SlotDuration, NothingExtra};
+use consensus::{import_queue, start_aura, AuraImportQueue, SlotDuration};
+use futures::prelude::*;
 use substrate_client::{self as client, LongestChain};
 use primitives::{ed25519::Pair, Pair as PairT};
 use inherents::InherentDataProviders;
@@ -61,11 +61,11 @@ construct_service_factory! {
 		Genesis = GenesisConfig,
 		Configuration = NodeConfig,
 		FullService = FullComponents<Self>
-			{ |config: FactoryFullConfiguration<Self>, executor: TaskExecutor|
-				FullComponents::<Factory>::new(config, executor)
+			{ |config: FactoryFullConfiguration<Self>|
+				FullComponents::<Factory>::new(config)
 			},
 		AuthoritySetup = {
-			|service: Self::FullService, executor: TaskExecutor, key: Option<Arc<Pair>>| {
+			|service: Self::FullService, key: Option<Arc<Pair>>| {
 				if let Some(key) = key {
 					info!("Using authority key {}", key.public());
 					let proposer = Arc::new(ProposerFactory {
@@ -75,7 +75,7 @@ construct_service_factory! {
 					let client = service.client();
 					let select_chain = service.select_chain()
 						.ok_or_else(|| ServiceError::SelectChainRequired)?;
-					executor.spawn(start_aura(
+					let aura = start_aura(
 						SlotDuration::get_or_compute(&*client)?,
 						key.clone(),
 						client.clone(),
@@ -83,29 +83,28 @@ construct_service_factory! {
 						client,
 						proposer,
 						service.network(),
-						service.on_exit(),
 						service.config.custom.inherent_data_providers.clone(),
 						service.config.force_authoring,
-					)?);
+					)?;
+					service.spawn_task(Box::new(aura.select(service.on_exit()).then(|_| Ok(()))));
 				}
 
 				Ok(service)
 			}
 		},
 		LightService = LightComponents<Self>
-			{ |config, executor| <LightComponents<Factory>>::new(config, executor) },
+			{ |config| <LightComponents<Factory>>::new(config) },
 		FullImportQueue = AuraImportQueue<
 			Self::Block,
 		>
 			{ |config: &mut FactoryFullConfiguration<Self> , client: Arc<FullClient<Self>>, _select_chain: Self::SelectChain| {
-					import_queue::<_, _, _, Pair>(
+					import_queue::<_, _, Pair>(
 						SlotDuration::get_or_compute(&*client)?,
 						client.clone(),
 						None,
 						None,
 						None,
 						client,
-						NothingExtra,
 						config.custom.inherent_data_providers.clone(),
 					).map_err(Into::into)
 				}
@@ -114,14 +113,13 @@ construct_service_factory! {
 			Self::Block,
 		>
 			{ |config: &mut FactoryFullConfiguration<Self>, client: Arc<LightClient<Self>>| {
-					import_queue::<_, _, _, Pair>(
+					import_queue::<_, _, Pair>(
 						SlotDuration::get_or_compute(&*client)?,
 						client.clone(),
 						None,
 						None,
 						None,
 						client,
-						NothingExtra,
 						config.custom.inherent_data_providers.clone(),
 					).map_err(Into::into)
 				}
@@ -129,10 +127,7 @@ construct_service_factory! {
 		SelectChain = LongestChain<FullBackend<Self>, Self::Block>
 			{ |config: &FactoryFullConfiguration<Self>, client: Arc<FullClient<Self>>| {
 				#[allow(deprecated)]
-				Ok(LongestChain::new(
-					client.backend().clone(),
-					client.import_lock()
-				))
+				Ok(LongestChain::new(client.backend().clone()))
 			}
 		},
 		FinalityProofProvider = { |_client: Arc<FullClient<Self>>| {

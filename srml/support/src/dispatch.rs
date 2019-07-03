@@ -17,12 +17,15 @@
 //! Dispatch system. Contains a macro for defining runtime modules and
 //! generating values representing lazy module function calls.
 
-pub use crate::rstd::prelude::{Vec, Clone, Eq, PartialEq};
+pub use crate::rstd::{result, prelude::{Vec, Clone, Eq, PartialEq}, marker};
 #[cfg(feature = "std")]
 pub use std::fmt;
-pub use crate::rstd::result;
 pub use crate::codec::{Codec, Decode, Encode, Input, Output, HasCompact, EncodeAsRef};
-pub use srml_metadata::{FunctionMetadata, DecodeDifferent, DecodeDifferentArray, FunctionArgumentMetadata};
+pub use srml_metadata::{
+	FunctionMetadata, DecodeDifferent, DecodeDifferentArray, FunctionArgumentMetadata,
+	ModuleConstantMetadata, DefaultByte, DefaultByteGetter,
+};
+pub use sr_primitives::weights::{TransactionWeight, Weighable, Weight};
 
 /// A type that cannot be instantiated.
 pub enum Never {}
@@ -200,8 +203,7 @@ impl<T> Parameter for T where T: Codec + Clone + Eq {}
 /// [`OffchainWorker`](../sr_primitives/traits/trait.OffchainWorker.html) trait.
 #[macro_export]
 macro_rules! decl_module {
-	// Macro transformations (to convert invocations with incomplete parameters to the canonical
-	// form)
+	// Entry point #1.
 	(
 		$(#[$attr:meta])*
 		pub struct $mod_type:ident<$trait_instance:ident: $trait_name:ident$(<I>, I: $instantiable:path $(= $module_default_instance:path)?)?>
@@ -217,10 +219,12 @@ macro_rules! decl_module {
 			{}
 			{}
 			{}
+			{}
 			[]
 			$($t)*
 		);
 	};
+	// Entry point #2.
 	(
 		$(#[$attr:meta])*
 		pub struct $mod_type:ident<$trait_instance:ident: $trait_name:ident$(<I>, I: $instantiable:path $(= $module_default_instance:path)?)?>
@@ -236,11 +240,13 @@ macro_rules! decl_module {
 			{}
 			{}
 			{}
+			{}
 			[]
 			$($t)*
 		);
 	};
 
+	// Normalization expansions. Fills the defaults.
 	(@normalize
 		$(#[$attr:meta])*
 		pub struct $mod_type:ident<$trait_instance:ident: $trait_name:ident$(<I>, I: $instantiable:path $(= $module_default_instance:path)?)?>
@@ -249,7 +255,8 @@ macro_rules! decl_module {
 		{ $( $on_initialize:tt )* }
 		{ $( $on_finalize:tt )* }
 		{ $( $offchain:tt )* }
-		[ $($t:tt)* ]
+		{ $( $constants:tt )* }
+		[ $( $dispatchables:tt )* ]
 		$(#[doc = $doc_attr:tt])*
 		$vis:vis fn deposit_event $(<$dpeg:ident $(, $dpeg_instance:ident)?>)* () = default;
 		$($rest:tt)*
@@ -262,7 +269,8 @@ macro_rules! decl_module {
 			{ $( $on_initialize )* }
 			{ $( $on_finalize )* }
 			{ $( $offchain )* }
-			[ $($t)* ]
+			{ $( $constants )* }
+			[ $( $dispatchables )* ]
 			$($rest)*
 		);
 	};
@@ -274,7 +282,8 @@ macro_rules! decl_module {
 		{ $( $on_initialize:tt )* }
 		{ $( $on_finalize:tt )* }
 		{ $( $offchain:tt )* }
-		[ $($t:tt)* ]
+		{ $( $constants:tt )* }
+		[ $( $dispatchables:tt )* ]
 		$(#[doc = $doc_attr:tt])*
 		$vis:vis fn deposit_event $(<$dpeg:ident $(, $dpeg_instance:ident)?>)* (
 			$($param_name:ident : $param:ty),*
@@ -289,7 +298,8 @@ macro_rules! decl_module {
 			{ $( $on_initialize )* }
 			{ $( $on_finalize )* }
 			{ $( $offchain )* }
-			[ $($t)* ]
+			{ $( $constants )* }
+			[ $( $dispatchables )* ]
 			$($rest)*
 		);
 	};
@@ -301,7 +311,8 @@ macro_rules! decl_module {
 		{ $( $on_initialize:tt )* }
 		{}
 		{ $( $offchain:tt )* }
-		[ $($t:tt)* ]
+		{ $( $constants:tt )* }
+		[ $( $dispatchables:tt )* ]
 		$(#[doc = $doc_attr:tt])*
 		fn on_finalize($($param_name:ident : $param:ty),* ) { $( $impl:tt )* }
 		$($rest:tt)*
@@ -314,7 +325,8 @@ macro_rules! decl_module {
 			{ $( $on_initialize )* }
 			{ fn on_finalize( $( $param_name : $param ),* ) { $( $impl )* } }
 			{ $( $offchain )* }
-			[ $($t)* ]
+			{ $( $constants )* }
+			[ $( $dispatchables )* ]
 			$($rest)*
 		);
 	};
@@ -326,7 +338,8 @@ macro_rules! decl_module {
 		{ $( $on_initialize:tt )* }
 		{}
 		{ $( $offchain:tt )* }
-		[ $($t:tt)* ]
+		{ $( $constants:tt )* }
+		[ $( $dispatchables:tt )* ]
 		$(#[doc = $doc_attr:tt])*
 		fn on_finalise($($param_name:ident : $param:ty),* ) { $( $impl:tt )* }
 		$($rest:tt)*
@@ -343,7 +356,8 @@ macro_rules! decl_module {
 		{}
 		{ $( $on_finalize:tt )* }
 		{ $( $offchain:tt )* }
-		[ $($t:tt)* ]
+		{ $( $constants:tt )* }
+		[ $( $dispatchables:tt )* ]
 		$(#[doc = $doc_attr:tt])*
 		fn on_initialize($($param_name:ident : $param:ty),* ) { $( $impl:tt )* }
 		$($rest:tt)*
@@ -356,7 +370,8 @@ macro_rules! decl_module {
 			{ fn on_initialize( $( $param_name : $param ),* ) { $( $impl )* } }
 			{ $( $on_finalize )* }
 			{ $( $offchain )* }
-			[ $($t)* ]
+			{ $( $constants )* }
+			[ $( $dispatchables )* ]
 			$($rest)*
 		);
 	};
@@ -368,7 +383,8 @@ macro_rules! decl_module {
 		{}
 		{ $( $on_finalize:tt )* }
 		{ $( $offchain:tt )* }
-		[ $($t:tt)* ]
+		{ $( $constants:tt )* }
+		[ $( $dispatchables:tt )* ]
 		$(#[doc = $doc_attr:tt])*
 		fn on_initialise($($param_name:ident : $param:ty),* ) { $( $impl:tt )* }
 		$($rest:tt)*
@@ -379,39 +395,92 @@ macro_rules! decl_module {
 	};
 	(@normalize
 		$(#[$attr:meta])*
-		pub struct $mod_type:ident<$trait_instance:ident: $trait_name:ident>
+		pub struct $mod_type:ident<
+			$trait_instance:ident: $trait_name:ident
+			$(<I>, I: $instantiable:path $(= $module_default_instance:path)?)?
+		>
 		for enum $call_type:ident where origin: $origin_type:ty, system = $system:ident
 		{ $( $deposit_event:tt )* }
 		{ $( $on_initialize:tt )* }
 		{ $( $on_finalize:tt )* }
 		{ }
-		[ $($t:tt)* ]
+		{ $( $constants:tt )* }
+		[ $( $dispatchables:tt )* ]
 		$(#[doc = $doc_attr:tt])*
 		fn offchain_worker($($param_name:ident : $param:ty),* ) { $( $impl:tt )* }
 		$($rest:tt)*
 	) => {
 		$crate::decl_module!(@normalize
 			$(#[$attr])*
-			pub struct $mod_type<$trait_instance: $trait_name>
+			pub struct $mod_type<
+				$trait_instance: $trait_name$(<I>, I: $instantiable $(= $module_default_instance)?)?
+			>
 			for enum $call_type where origin: $origin_type, system = $system
 			{ $( $deposit_event )* }
 			{ $( $on_initialize )* }
 			{ $( $on_finalize )* }
 			{ fn offchain_worker( $( $param_name : $param ),* ) { $( $impl )* } }
-			[ $($t)* ]
+			{ $( $constants )* }
+			[ $( $dispatchables )* ]
 			$($rest)*
 		);
 	};
+
+	// This puts a constant in the parsed constants list.
 	(@normalize
 		$(#[$attr:meta])*
-		pub struct $mod_type:ident<$trait_instance:ident: $trait_name:ident$(<I>, $instance:ident: $instantiable:path $(= $module_default_instance:path)?)?>
+		pub struct $mod_type:ident<
+			$trait_instance:ident: $trait_name:ident
+			$(<I>, $instance:ident: $instantiable:path $(= $module_default_instance:path)?)?
+		>
 		for enum $call_type:ident where origin: $origin_type:ty, system = $system:ident
 		{ $( $deposit_event:tt )* }
 		{ $( $on_initialize:tt )* }
 		{ $( $on_finalize:tt )* }
 		{ $( $offchain:tt )* }
-		[ $($t:tt)* ]
+		{ $( $constants:tt )* }
+		[ $( $dispatchables:tt )* ]
+		$( #[doc = $doc_attr:tt] )*
+		const $name:ident: $ty:ty = $value:expr;
+		$( $rest:tt )*
+	) => {
+		$crate::decl_module!(@normalize
+			$(#[$attr])*
+			pub struct $mod_type<
+				$trait_instance: $trait_name
+				$( <I>, $instance: $instantiable $(= $module_default_instance)? )?
+			>
+			for enum $call_type where origin: $origin_type, system = $system
+			{ $( $deposit_event )* }
+			{ $( $on_initialize )* }
+			{ $( $on_finalize )* }
+			{ $( $offchain )* }
+			{
+				$( $constants )*
+				$( #[doc = $doc_attr ] )*
+				$name: $ty = $value;
+			}
+			[ $( $dispatchables )* ]
+			$($rest)*
+		);
+	};
+
+	// This puts the function statement into the [], decreasing `$rest` and moving toward finishing the parse.
+	(@normalize
+		$(#[$attr:meta])*
+		pub struct $mod_type:ident<
+			$trait_instance:ident: $trait_name:ident
+			$(<I>, $instance:ident: $instantiable:path $(= $module_default_instance:path)?)?
+			>
+		for enum $call_type:ident where origin: $origin_type:ty, system = $system:ident
+		{ $( $deposit_event:tt )* }
+		{ $( $on_initialize:tt )* }
+		{ $( $on_finalize:tt )* }
+		{ $( $offchain:tt )* }
+		{ $( $constants:tt )* }
+		[ $( $dispatchables:tt )* ]
 		$(#[doc = $doc_attr:tt])*
+		#[weight = $weight:expr]
 		$fn_vis:vis fn $fn_name:ident(
 			$origin:ident $(, $(#[$codec_attr:ident])* $param_name:ident : $param:ty)*
 		) $( -> $result:ty )* { $( $impl:tt )* }
@@ -419,15 +488,19 @@ macro_rules! decl_module {
 	) => {
 		$crate::decl_module!(@normalize
 			$(#[$attr])*
-			pub struct $mod_type<$trait_instance: $trait_name$(<I>, $instance: $instantiable $(= $module_default_instance)?)?>
+			pub struct $mod_type<
+				$trait_instance: $trait_name$(<I>, $instance: $instantiable $(= $module_default_instance)?)?
+			>
 			for enum $call_type where origin: $origin_type, system = $system
 			{ $( $deposit_event )* }
 			{ $( $on_initialize )* }
 			{ $( $on_finalize )* }
 			{ $( $offchain )* }
+			{ $( $constants )* }
 			[
-				$($t)*
+				$( $dispatchables )*
 				$(#[doc = $doc_attr])*
+				#[weight = $weight]
 				$fn_vis fn $fn_name(
 					$origin $( , $(#[$codec_attr])* $param_name : $param )*
 				) $( -> $result )* { $( $impl )* }
@@ -436,6 +509,47 @@ macro_rules! decl_module {
 			$($rest)*
 		);
 	};
+	// Add #[weight] if none is defined.
+	(@normalize
+		$(#[$attr:meta])*
+		pub struct $mod_type:ident<
+			$trait_instance:ident:
+				$trait_name:ident$(<I>, $instance:ident: $instantiable:path $(= $module_default_instance:path)?)?
+			>
+		for enum $call_type:ident where origin: $origin_type:ty, system = $system:ident
+		{ $( $deposit_event:tt )* }
+		{ $( $on_initialize:tt )* }
+		{ $( $on_finalize:tt )* }
+		{ $( $offchain:tt )* }
+		{ $( $constants:tt )* }
+		[ $( $dispatchables:tt )* ]
+		$(#[doc = $doc_attr:tt])*
+		$fn_vis:vis fn $fn_name:ident(
+			$from:ident $(, $(#[$codec_attr:ident])* $param_name:ident : $param:ty)*
+		) $( -> $result:ty )* { $( $impl:tt )* }
+		$($rest:tt)*
+	) => {
+		$crate::decl_module!(@normalize
+			$(#[$attr])*
+			pub struct $mod_type<
+				$trait_instance: $trait_name$(<I>, $instance: $instantiable $(= $module_default_instance)?)?
+			>
+			for enum $call_type where origin: $origin_type, system = $system
+			{ $( $deposit_event )* }
+			{ $( $on_initialize )* }
+			{ $( $on_finalize )* }
+			{ $( $offchain )* }
+			{ $( $constants )* }
+			[ $( $dispatchables )* ]
+			$(#[doc = $doc_attr])*
+			#[weight = $crate::dispatch::TransactionWeight::default()]
+			$fn_vis fn $fn_name(
+				$from $(, $(#[$codec_attr])* $param_name : $param )*
+			) $( -> $result )* { $( $impl )* }
+			$($rest)*
+		);
+	};
+	// Ignore any ident which is not `origin` with type `T::Origin`.
 	(@normalize
 		$(#[$attr:meta])*
 		pub struct $mod_type:ident<$trait_instance:ident: $trait_name:ident$(<I>, I: $instantiable:path $(= $module_default_instance:path)?)?>
@@ -444,8 +558,10 @@ macro_rules! decl_module {
 		{ $( $on_initialize:tt )* }
 		{ $( $on_finalize:tt )* }
 		{ $( $offchain:tt )* }
-		[ $($t:tt)* ]
+		{ $( $constants:tt )* }
+		[ $( $dispatchables:tt )* ]
 		$(#[doc = $doc_attr:tt])*
+		$(#[weight = $weight:expr])?
 		$fn_vis:vis fn $fn_name:ident(
 			$origin:ident : T::Origin $(, $(#[$codec_attr:ident])* $param_name:ident : $param:ty)*
 		) $( -> $result:ty )* { $( $impl:tt )* }
@@ -457,6 +573,7 @@ macro_rules! decl_module {
 			not use the `T::Origin` type.)"
 		)
 	};
+	// Ignore any ident which is `origin` but has a type, regardless of the type token itself.
 	(@normalize
 		$(#[$attr:meta])*
 		pub struct $mod_type:ident<$trait_instance:ident: $trait_name:ident$(<I>, I: $instantiable:path $(= $module_default_instance:path)?)?>
@@ -465,8 +582,10 @@ macro_rules! decl_module {
 		{ $( $on_initialize:tt )* }
 		{ $( $on_finalize:tt )* }
 		{ $( $offchain:tt )* }
-		[ $($t:tt)* ]
+		{ $( $constants:tt )* }
+		[ $( $dispatchables:tt )* ]
 		$(#[doc = $doc_attr:tt])*
+		$(#[weight = $weight:expr])?
 		$fn_vis:vis fn $fn_name:ident(
 			origin : $origin:ty $(, $(#[$codec_attr:ident])* $param_name:ident : $param:ty)*
 		) $( -> $result:ty )* { $( $impl:tt )* }
@@ -478,6 +597,7 @@ macro_rules! decl_module {
 			not use the `T::Origin` type.)"
 		)
 	};
+	// Add root if no origin is defined.
 	(@normalize
 		$(#[$attr:meta])*
 		pub struct $mod_type:ident<$trait_instance:ident: $trait_name:ident$(<I>, $instance:ident: $instantiable:path $(= $module_default_instance:path)?)?>
@@ -486,8 +606,10 @@ macro_rules! decl_module {
 		{ $( $on_initialize:tt )* }
 		{ $( $on_finalize:tt )* }
 		{ $( $offchain:tt )* }
-		[ $($t:tt)* ]
+		{ $( $constants:tt )* }
+		[ $( $dispatchables:tt )* ]
 		$(#[doc = $doc_attr:tt])*
+		$(#[weight = $weight:expr])?
 		$fn_vis:vis fn $fn_name:ident(
 			$( $(#[$codec_attr:ident])* $param_name:ident : $param:ty),*
 		) $( -> $result:ty )* { $( $impl:tt )* }
@@ -501,17 +623,19 @@ macro_rules! decl_module {
 			{ $( $on_initialize )* }
 			{ $( $on_finalize )* }
 			{ $( $offchain )* }
-			[
-				$($t)*
-				$(#[doc = $doc_attr])*
-				$fn_vis fn $fn_name(
-					root $( , $(#[$codec_attr])* $param_name : $param )*
-				) $( -> $result )* { $( $impl )* }
-				{ $($instance: $instantiable)? }
-			]
+			{ $( $constants )* }
+			[ $( $dispatchables )* ]
+
+			$(#[doc = $doc_attr])*
+			$(#[weight = $weight])?
+			$fn_vis fn $fn_name(
+				root $( , $(#[$codec_attr])* $param_name : $param )*
+			) $( -> $result )* { $( $impl )* }
+
 			$($rest)*
 		);
 	};
+	// Last normalize step. Triggers `@imp` expansion which is the real expansion.
 	(@normalize
 		$(#[$attr:meta])*
 		pub struct $mod_type:ident<$trait_instance:ident: $trait_name:ident$(<I>, I: $instantiable:path $(= $module_default_instance:path)?)?>
@@ -520,18 +644,20 @@ macro_rules! decl_module {
 		{ $( $on_initialize:tt )* }
 		{ $( $on_finalize:tt )* }
 		{ $( $offchain:tt )* }
-		[ $($t:tt)* ]
+		{ $( $constants:tt )* }
+		[ $( $dispatchables:tt )* ]
 	) => {
 		$crate::decl_module!(@imp
 			$(#[$attr])*
 			pub struct $mod_type<$trait_instance: $trait_name$(<I>, I: $instantiable $(= $module_default_instance)?)?>
 			for enum $call_type where origin: $origin_type, system = $system {
-				$($t)*
+				$( $dispatchables )*
 			}
 			{ $( $deposit_event )* }
 			{ $( $on_initialize )* }
 			{ $( $on_finalize )* }
 			{ $( $offchain )* }
+			{ $( $constants )* }
 		);
 	};
 
@@ -686,6 +812,7 @@ macro_rules! decl_module {
 		{}
 	};
 
+	// Expansion for root dispatch functions with no specified result type.
 	(@impl_function
 		$module:ident<$trait_instance:ident: $trait_name:ident$(<I>, $instance:ident: $instantiable:path)?>;
 		$origin_ty:ty;
@@ -694,12 +821,14 @@ macro_rules! decl_module {
 		$vis:vis fn $name:ident ( root $(, $param:ident : $param_ty:ty )* ) { $( $impl:tt )* }
 	) => {
 		$(#[doc = $doc_attr])*
+		#[allow(unreachable_code)]
 		$vis fn $name($( $param: $param_ty ),* ) -> $crate::dispatch::Result {
 			{ $( $impl )* }
 			Ok(())
 		}
 	};
 
+	// Expansion for root dispatch functions with explicit return types.
 	(@impl_function
 		$module:ident<$trait_instance:ident: $trait_name:ident$(<I>, $instance:ident: $instantiable:path)?>;
 		$origin_ty:ty;
@@ -715,6 +844,7 @@ macro_rules! decl_module {
 		}
 	};
 
+	// Expansion for _origin_ dispatch functions with no return type.
 	(@impl_function
 		$module:ident<$trait_instance:ident: $trait_name:ident$(<I>, $instance:ident: $instantiable:path)?>;
 		$origin_ty:ty;
@@ -733,6 +863,7 @@ macro_rules! decl_module {
 		}
 	};
 
+	// Expansion for _origin_ dispatch functions with explicit return type.
 	(@impl_function
 		$module:ident<$trait_instance:ident: $trait_name:ident$(<I>, $instance:ident: $instantiable:path)?>;
 		$origin_ty:ty;
@@ -868,6 +999,7 @@ macro_rules! decl_module {
 		for enum $call_type:ident where origin: $origin_type:ty, system = $system:ident {
 			$(
 				$(#[doc = $doc_attr:tt])*
+				#[weight = $weight:expr]
 				$fn_vis:vis fn $fn_name:ident(
 					$from:ident $( , $(#[$codec_attr:ident])* $param_name:ident : $param:ty)*
 				) $( -> $result:ty )* { $( $impl:tt )* }
@@ -878,10 +1010,9 @@ macro_rules! decl_module {
 		{ $( $on_initialize:tt )* }
 		{ $( $on_finalize:tt )* }
 		{ $( $offchain:tt )* }
+		{ $( $constants:tt )* }
 	) => {
-		$crate::__check_reserved_fn_name! {
-			$($fn_name)*
-		}
+		$crate::__check_reserved_fn_name! { $( $fn_name )* }
 
 		// Workaround for https://github.com/rust-lang/rust/issues/26925 . Remove when sorted.
 		#[derive(Clone, Copy, PartialEq, Eq)]
@@ -908,7 +1039,6 @@ macro_rules! decl_module {
 			$mod_type<$trait_instance: $trait_name $(<I>, $instance: $instantiable)?>;
 			$( $offchain )*
 		}
-
 		$crate::decl_module! {
 			@impl_deposit_event
 			$mod_type<$trait_instance: $trait_name $(<I>, $instance: $instantiable)?>;
@@ -949,6 +1079,18 @@ macro_rules! decl_module {
 					$param;
 				)*
 			)*
+		}
+
+		// Implement weight calculation function for Call
+		impl<$trait_instance: $trait_name $(<I>, $instance: $instantiable)?> $crate::dispatch::Weighable
+			for $call_type<$trait_instance $(, $instance)?>
+		{
+			fn weight(&self, _len: usize) -> $crate::dispatch::Weight {
+				match self {
+					$( $call_type::$fn_name(..) => $crate::dispatch::Weighable::weight(&$weight, _len), )*
+					$call_type::__PhantomItem(_, _) => { unreachable!("__PhantomItem should never be used.") },
+				}
+			}
 		}
 
 		// manual implementation of clone/eq/partialeq because using derive erroneously requires
@@ -996,7 +1138,10 @@ macro_rules! decl_module {
 		impl<$trait_instance: $trait_name $(<I>, $instance: $instantiable)?> $crate::dispatch::fmt::Debug
 			for $call_type<$trait_instance $(, $instance)?>
 		{
-			fn fmt(&self, _f: &mut $crate::dispatch::fmt::Formatter) -> $crate::dispatch::result::Result<(), $crate::dispatch::fmt::Error> {
+			fn fmt(
+				&self,
+				_f: &mut $crate::dispatch::fmt::Formatter,
+			) -> $crate::dispatch::result::Result<(), $crate::dispatch::fmt::Error> {
 				match *self {
 					$(
 						$call_type::$fn_name( $( ref $param_name ),* ) =>
@@ -1038,13 +1183,20 @@ macro_rules! decl_module {
 
 		impl<$trait_instance: $trait_name $(<I>, $instance: $instantiable)?> $mod_type<$trait_instance $(, $instance)?> {
 			#[doc(hidden)]
-			pub fn dispatch<D: $crate::dispatch::Dispatchable<Trait = $trait_instance>>(d: D, origin: D::Origin) -> $crate::dispatch::Result {
+			pub fn dispatch<D: $crate::dispatch::Dispatchable<Trait = $trait_instance>>(
+				d: D,
+				origin: D::Origin,
+			) -> $crate::dispatch::Result {
 				d.dispatch(origin)
 			}
 		}
 		$crate::__dispatch_impl_metadata! {
 			$mod_type<$trait_instance: $trait_name $(<I>, $instance: $instantiable)?> $call_type $origin_type
 			{$( $(#[doc = $doc_attr])* fn $fn_name($from $(, $(#[$codec_attr])* $param_name : $param )*); )*}
+		}
+		$crate::__impl_module_constants_metadata ! {
+			$mod_type<$trait_instance: $trait_name $(<I>, $instance: $instantiable)?>
+			$( $constants )*
 		}
 	}
 }
@@ -1072,14 +1224,19 @@ macro_rules! impl_outer_dispatch {
 				$camelcase ( $crate::dispatch::CallableCallFor<$camelcase> )
 			,)*
 		}
+		impl $crate::dispatch::Weighable for $call_type {
+			fn weight(&self, len: usize) -> $crate::dispatch::Weight {
+				match self {
+					$( $call_type::$camelcase(call) => call.weight(len), )*
+				}
+			}
+		}
 		impl $crate::dispatch::Dispatchable for $call_type {
 			type Origin = $origin;
 			type Trait = $call_type;
 			fn dispatch(self, origin: $origin) -> $crate::dispatch::Result {
 				match self {
-					$(
-						$call_type::$camelcase(call) => call.dispatch(origin),
-					)*
+					$( $call_type::$camelcase(call) => call.dispatch(origin), )*
 				}
 			}
 		}
@@ -1109,6 +1266,115 @@ macro_rules! __dispatch_impl_metadata {
 			#[doc(hidden)]
 			pub fn call_functions() -> &'static [$crate::dispatch::FunctionMetadata] {
 				$crate::__call_to_functions!($($rest)*)
+			}
+		}
+	}
+}
+
+/// Implement metadata for module constants.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __impl_module_constants_metadata {
+	// Without instance
+	(
+		$mod_type:ident<$trait_instance:ident: $trait_name:ident>
+		$(
+			$( #[doc = $doc_attr:tt] )*
+			$name:ident: $type:ty = $value:expr;
+		)*
+	) => {
+		$crate::paste::item! {
+			$crate::__impl_module_constants_metadata! {
+				GENERATE_CODE
+				$mod_type<$trait_instance: $trait_name>
+				$(
+					$( #[doc = $doc_attr] )*
+					[< $name DefaultByteGetter >]
+					$name<$trait_instance: $trait_name>: $type = $value;
+				)*
+			}
+		}
+	};
+	// With instance
+	(
+		$mod_type:ident<$trait_instance:ident: $trait_name:ident<I>, $instance:ident: $instantiable:path>
+		$(
+			$( #[doc = $doc_attr:tt] )*
+			$name:ident: $type:ty = $value:expr;
+		)*
+	) => {
+		$crate::paste::item! {
+			$crate::__impl_module_constants_metadata! {
+				GENERATE_CODE
+				$mod_type<$trait_instance: $trait_name<I>, $instance: $instantiable>
+				$(
+					$( #[doc = $doc_attr] )*
+					[< $name DefaultByteGetter >]
+					$name<$trait_instance: $trait_name<I>, $instance: $instantiable>: $type = $value;
+				)*
+			}
+		}
+	};
+	// Do the code generation
+	(GENERATE_CODE
+		$mod_type:ident<$trait_instance:ident: $trait_name:ident $(<I>, $instance:ident: $instantiable:path)?>
+		$(
+			$( #[doc = $doc_attr:tt] )*
+			$default_byte_name:ident
+			$name:ident<
+				$const_trait_instance:ident: $const_trait_name:ident $(
+					<I>, $const_instance:ident: $const_instantiable:path
+				)*
+			>: $type:ty = $value:expr;
+		)*
+	) => {
+		impl<$trait_instance: 'static + $trait_name $(<I>, $instance: $instantiable)?>
+			$mod_type<$trait_instance $(, $instance)?>
+		{
+			#[doc(hidden)]
+			pub fn module_constants_metadata() -> &'static [$crate::dispatch::ModuleConstantMetadata] {
+				// Create the `ByteGetter`s
+				$(
+					#[allow(non_upper_case_types)]
+					#[allow(non_camel_case_types)]
+					struct $default_byte_name<
+						$const_trait_instance: $const_trait_name $(
+							<I>, $const_instance: $const_instantiable
+						)?
+					>($crate::dispatch::marker::PhantomData<
+						($const_trait_instance $(, $const_instance)?)
+					>);
+					impl<$const_trait_instance: 'static + $const_trait_name $(
+						<I>, $const_instance: $const_instantiable)?
+					> $crate::dispatch::DefaultByte
+						for $default_byte_name <$const_trait_instance $(, $const_instance)?>
+					{
+						fn default_byte(&self) -> $crate::dispatch::Vec<u8> {
+							let value: $type = $value;
+							$crate::dispatch::Encode::encode(&value)
+						}
+					}
+				)*
+				&[
+					$(
+						$crate::dispatch::ModuleConstantMetadata {
+							name: $crate::dispatch::DecodeDifferent::Encode(stringify!($name)),
+							ty: $crate::dispatch::DecodeDifferent::Encode(stringify!($type)),
+							value: $crate::dispatch::DecodeDifferent::Encode(
+								$crate::dispatch::DefaultByteGetter(
+									&$default_byte_name::<
+										$const_trait_instance $(, $const_instance)?
+									>(
+										$crate::dispatch::marker::PhantomData
+									)
+								)
+							),
+							documentation: $crate::dispatch::DecodeDifferent::Encode(
+								&[ $( $doc_attr ),* ]
+							),
+						}
+					),*
+				]
 			}
 		}
 	}
@@ -1271,6 +1537,7 @@ mod tests {
 			fn aux_0(_origin) -> Result { unreachable!() }
 			fn aux_1(_origin, #[compact] _data: u32) -> Result { unreachable!() }
 			fn aux_2(_origin, _data: i32, _data2: String) -> Result { unreachable!() }
+			#[weight = TransactionWeight::Basic(10, 100)]
 			fn aux_3() -> Result { unreachable!() }
 			fn aux_4(_data: i32) -> Result { unreachable!() }
 			fn aux_5(_origin, _data: i32, #[compact] _data2: u32) -> Result { unreachable!() }
@@ -1278,6 +1545,9 @@ mod tests {
 			fn on_initialize(n: T::BlockNumber) { if n.into() == 42 { panic!("on_initialize") } }
 			fn on_finalize(n: T::BlockNumber) { if n.into() == 42 { panic!("on_finalize") } }
 			fn offchain_worker() {}
+
+			#[weight = TransactionWeight::Max]
+			fn weighted() { unreachable!() }
 		}
 	}
 
@@ -1342,6 +1612,11 @@ mod tests {
 					]),
 					documentation: DecodeDifferent::Encode(&[]),
 				},
+				FunctionMetadata {
+					name: DecodeDifferent::Encode("weighted"),
+					arguments: DecodeDifferent::Encode(&[]),
+					documentation: DecodeDifferent::Encode(&[]),
+				},
 			];
 
 	struct TraitImpl {}
@@ -1395,5 +1670,15 @@ mod tests {
 	#[should_panic(expected = "on_finalize")]
 	fn on_finalize_should_work() {
 		<Module<TraitImpl> as OnFinalize<u32>>::on_finalize(42);
+	}
+
+	#[test]
+	fn weight_should_attach_to_call_enum() {
+		// max weight. not dependent on input.
+		assert_eq!(Call::<TraitImpl>::weighted().weight(100), 3 * 1024 * 1024);
+		// default weight.
+		assert_eq!(Call::<TraitImpl>::aux_0().weight(5), 5 /*tx-len*/);
+		// custom basic
+		assert_eq!(Call::<TraitImpl>::aux_3().weight(5), 10 + 100 * 5 );
 	}
 }

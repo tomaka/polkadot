@@ -14,14 +14,15 @@
 // You should have received a copy of the GNU General Public License
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Conrete externalities implementation.
+//! Concrete externalities implementation.
 
 use std::{error, fmt, cmp::Ord};
 use log::warn;
 use crate::backend::Backend;
 use crate::changes_trie::{Storage as ChangesTrieStorage, compute_changes_trie_root};
-use crate::{Externalities, OverlayedChanges, OffchainExt, ChildStorageKey};
+use crate::{Externalities, OverlayedChanges, ChildStorageKey};
 use hash_db::Hasher;
+use primitives::offchain;
 use primitives::storage::well_known_keys::is_child_storage_key;
 use trie::{MemoryDB, TrieDBMut, TrieMut, default_child_trie_root};
 
@@ -91,7 +92,7 @@ where
 	H: Hasher,
 	B: 'a + Backend<H>,
 	T: 'a + ChangesTrieStorage<H, N>,
-	O: 'a + OffchainExt,
+	O: 'a + offchain::Externalities,
 	H::Out: Ord + 'static,
 	N: crate::changes_trie::BlockNumber,
 {
@@ -114,7 +115,7 @@ where
 	}
 
 	/// Get the transaction necessary to update the backend.
-	pub fn transaction(mut self) -> (B::Transaction, Option<MemoryDB<H>>) {
+	pub fn transaction(mut self) -> ((B::Transaction, H::Out), Option<MemoryDB<H>>) {
 		let _ = self.storage_root();
 
 		let (storage_transaction, changes_trie_transaction) = (
@@ -125,7 +126,7 @@ where
 		);
 
 		(
-			storage_transaction.0,
+			storage_transaction,
 			changes_trie_transaction,
 		)
 	}
@@ -145,7 +146,7 @@ where
 	H: Hasher,
 	B: 'a + Backend<H>,
 	T: 'a + ChangesTrieStorage<H, N>,
-	O: 'a + OffchainExt,
+	O: 'a + offchain::Externalities,
 	N: crate::changes_trie::BlockNumber,
 {
 	pub fn storage_pairs(&self) -> Vec<(Vec<u8>, Vec<u8>)> {
@@ -167,7 +168,7 @@ where
 	H: Hasher,
 	B: 'a + Backend<H>,
 	T: 'a + ChangesTrieStorage<H, N>,
-	O: 'a + OffchainExt,
+	O: 'a + offchain::Externalities,
 	H::Out: Ord + 'static,
 	N: crate::changes_trie::BlockNumber,
 {
@@ -342,15 +343,8 @@ where
 		Ok(root)
 	}
 
-	fn submit_extrinsic(&mut self, extrinsic: Vec<u8>) -> Result<(), ()> {
-		let _guard = panic_handler::AbortGuard::new(true);
-		if let Some(ext) = self.offchain_externalities.as_mut() {
-			ext.submit_extrinsic(extrinsic);
-			Ok(())
-		} else {
-			warn!("Call to submit_extrinsic without offchain externalities set.");
-			Err(())
-		}
+	fn offchain(&mut self) -> Option<&mut dyn offchain::Externalities> {
+		self.offchain_externalities.as_mut().map(|x| &mut **x as _)
 	}
 }
 
