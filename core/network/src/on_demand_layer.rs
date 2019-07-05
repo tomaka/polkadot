@@ -18,7 +18,7 @@
 
 use crate::protocol::on_demand::RequestData;
 use std::sync::Arc;
-use futures::{prelude::*, sync::mpsc, sync::oneshot};
+use futures::{prelude::*, channel::mpsc, sync::oneshot};
 use parking_lot::Mutex;
 use client::error::Error as ClientError;
 use client::light::fetcher::{Fetcher, FetchChecker, RemoteHeaderRequest,
@@ -143,7 +143,7 @@ impl<T> Future for RemoteResponse<T> {
 			.and_then(|r| match r {
 				Async::Ready(Ok(ready)) => Ok(Async::Ready(ready)),
 				Async::Ready(Err(error)) => Err(error),
-				Async::NotReady => Ok(Async::NotReady),
+				Poll::Pending => Poll::Pending,
 			})
 	}
 }

@@ -29,7 +29,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::collections::HashMap;
 use std::time::Duration;
-use futures::sync::mpsc;
+use futures::channel::mpsc;
 use parking_lot::Mutex;
 
 use client::{BlockchainEvents, backend::Backend, runtime_api::BlockT};
@@ -82,13 +82,13 @@ pub struct Service<Components: components::Components> {
 	exit: ::exit_future::Exit,
 	signal: Option<Signal>,
 	/// Sender for futures that must be spawned as background tasks.
-	to_spawn_tx: mpsc::UnboundedSender<Box<dyn Future<Item = (), Error = ()> + Send>>,
+	to_spawn_tx: mpsc::UnboundedSender<Box<dyn Future<Output = Result<(), ()>> + Send>>,
 	/// Receiver for futures that must be spawned as background tasks.
-	to_spawn_rx: mpsc::UnboundedReceiver<Box<dyn Future<Item = (), Error = ()> + Send>>,
+	to_spawn_rx: mpsc::UnboundedReceiver<Box<dyn Future<Output = Result<(), ()>> + Send>>,
 	/// List of futures to poll from `poll`.
 	/// If spawning a background task is not possible, we instead push the task into this `Vec`.
 	/// The elements must then be polled manually.
-	to_poll: Vec<Box<dyn Future<Item = (), Error = ()> + Send>>,
+	to_poll: Vec<Box<dyn Future<Output = Result<(), ()>> + Send>>,
 	/// Configuration of this Service
 	pub config: FactoryFullConfiguration<Components::Factory>,
 	rpc_handlers: rpc::RpcHandler,
@@ -117,14 +117,14 @@ pub fn new_client<Factory: components::ServiceFactory>(config: &FactoryFullConfi
 /// An handle for spawning tasks in the service.
 #[derive(Clone)]
 pub struct SpawnTaskHandle {
-	sender: mpsc::UnboundedSender<Box<dyn Future<Item = (), Error = ()> + Send>>,
+	sender: mpsc::UnboundedSender<Box<dyn Future<Output = Result<(), ()>> + Send>>,
 }
 
-impl Executor<Box<dyn Future<Item = (), Error = ()> + Send>> for SpawnTaskHandle {
+impl Executor<Box<dyn Future<Output = Result<(), ()>> + Send>> for SpawnTaskHandle {
 	fn execute(
 		&self,
-		future: Box<dyn Future<Item = (), Error = ()> + Send>
-	) -> Result<(), futures::future::ExecuteError<Box<dyn Future<Item = (), Error = ()> + Send>>> {
+		future: Box<dyn Future<Output = Result<(), ()>> + Send>
+	) -> Result<(), futures::future::ExecuteError<Box<dyn Future<Output = Result<(), ()>> + Send>>> {
 		if let Err(err) = self.sender.unbounded_send(future) {
 			let kind = futures::future::ExecuteErrorKind::Shutdown;
 			Err(futures::future::ExecuteError::new(kind, err.into_inner()))
@@ -159,7 +159,7 @@ impl<Components: components::Components> Service<Components> {
 
 		// List of asynchronous tasks to spawn. We collect them, then spawn them all at once.
 		let (to_spawn_tx, to_spawn_rx) =
-			mpsc::unbounded::<Box<dyn Future<Item = (), Error = ()> + Send>>();
+			mpsc::unbounded::<Box<dyn Future<Output = Result<(), ()>> + Send>>();
 
 		// Create client
 		let executor = NativeExecutor::new(config.default_heap_pages);
@@ -339,8 +339,8 @@ impl<Components: components::Components> Service<Components> {
 								None => return Ok(Async::Ready(None)),
 								Some(last) => break last,
 							},
-							Async::NotReady => match last {
-								None => return Ok(Async::NotReady),
+							Poll::Pending => match last {
+								None => return Poll::Pending,
 								Some(last) => break last,
 							},
 						}
@@ -556,7 +556,7 @@ impl<Components: components::Components> Service<Components> {
 	}
 
 	/// Spawns a task in the background that runs the future passed as parameter.
-	pub fn spawn_task(&self, task: impl Future<Item = (), Error = ()> + Send + 'static) {
+	pub fn spawn_task(&self, task: impl Future<Output = Result<(), ()>> + Send + 'static) {
 		let _ = self.to_spawn_tx.unbounded_send(Box::new(task));
 	}
 
@@ -637,17 +637,17 @@ impl<Components> Future for Service<Components> where Components: components::Co
 		}
 
 		// The service future never ends.
-		Ok(Async::NotReady)
+		Poll::Pending
 	}
 }
 
-impl<Components> Executor<Box<dyn Future<Item = (), Error = ()> + Send>>
+impl<Components> Executor<Box<dyn Future<Output = Result<(), ()>> + Send>>
 	for Service<Components> where Components: components::Components
 {
 	fn execute(
 		&self,
-		future: Box<dyn Future<Item = (), Error = ()> + Send>
-	) -> Result<(), futures::future::ExecuteError<Box<dyn Future<Item = (), Error = ()> + Send>>> {
+		future: Box<dyn Future<Output = Result<(), ()>> + Send>
+	) -> Result<(), futures::future::ExecuteError<Box<dyn Future<Output = Result<(), ()>> + Send>>> {
 		if let Err(err) = self.to_spawn_tx.unbounded_send(future) {
 			let kind = futures::future::ExecuteErrorKind::Shutdown;
 			Err(futures::future::ExecuteError::new(kind, err.into_inner()))
@@ -663,10 +663,10 @@ impl<Components> Executor<Box<dyn Future<Item = (), Error = ()> + Send>>
 fn build_network_future<B: BlockT, S: network::specialization::NetworkSpecialization<B>, H: network::ExHashT>(
 	mut network: network::NetworkWorker<B, S, H>,
 	status_sinks: Arc<Mutex<Vec<mpsc::UnboundedSender<NetworkStatus<B>>>>>,
-) -> impl Future<Item = (), Error = ()> {
+) -> impl Future<Output = Result<(), ()>> {
 	// Interval at which we send status updates on the status stream.
 	const STATUS_INTERVAL: Duration = Duration::from_millis(5000);
-	let mut status_interval = tokio_timer::Interval::new_interval(STATUS_INTERVAL);
+	let mut status_interval = futures_timer::Interval::new_interval(STATUS_INTERVAL);
 
 	futures::future::poll_fn(move || {
 		while let Ok(Async::Ready(_)) = status_interval.poll() {
@@ -871,7 +871,7 @@ fn build_system_rpc_handler<Components: components::Components>(
 	network: Arc<NetworkService<Components>>,
 	rx: mpsc::UnboundedReceiver<rpc::apis::system::Request<ComponentBlock<Components>>>,
 	should_have_peers: bool,
-) -> impl Future<Item = (), Error = ()> {
+) -> impl Future<Output = Result<(), ()>> {
 	rx.for_each(move |request| {
 		match request {
 			rpc::apis::system::Request::Health(sender) => {

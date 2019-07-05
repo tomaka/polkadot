@@ -19,8 +19,8 @@
 
 mod peersstate;
 
-use std::{collections::{HashSet, HashMap}, collections::VecDeque, time::Instant};
-use futures::{prelude::*, sync::mpsc, try_ready};
+use std::{collections::{HashSet, HashMap}, collections::VecDeque, pin::Pin, time::Instant};
+use futures::{prelude::*, channel::mpsc, task::Context, task::Poll};
 use libp2p::PeerId;
 use log::{debug, error, trace};
 use serde_json::json;
@@ -457,23 +457,24 @@ impl Peerset {
 
 impl Stream for Peerset {
 	type Item = Message;
-	type Error = ();
 
-	fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+	fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
 		loop {
 			if let Some(message) = self.message_queue.pop_front() {
-				return Ok(Async::Ready(Some(message)));
+				return Poll::Ready(Some(message));
 			}
-			match try_ready!(self.rx.poll()) {
-				None => return Ok(Async::NotReady),
-				Some(action) => match action {
+
+			match Stream::poll_next(Pin::new(&mut self.rx), cx) {
+				Poll::Pending | Poll::Ready(None) => return Poll::Pending,
+				Poll::Ready(Some(action)) => match action {
 					Action::AddReservedPeer(peer_id) => self.on_add_reserved_peer(peer_id),
 					Action::RemoveReservedPeer(peer_id) => self.on_remove_reserved_peer(peer_id),
 					Action::SetReservedOnly(reserved) => self.on_set_reserved_only(reserved),
 					Action::ReportPeer(peer_id, score_diff) => self.on_report_peer(peer_id, score_diff),
 					Action::SetPriorityGroup(group_id, peers) => self.on_set_priority_group(&group_id, peers),
 					Action::AddToPriorityGroup(group_id, peer_id) => self.on_add_to_priority_group(&group_id, peer_id),
-					Action::RemoveFromPriorityGroup(group_id, peer_id) => self.on_remove_from_priority_group(&group_id, peer_id),
+					Action::RemoveFromPriorityGroup(group_id, peer_id) =>
+						self.on_remove_from_priority_group(&group_id, peer_id),
 				}
 			}
 		}
@@ -483,9 +484,9 @@ impl Stream for Peerset {
 #[cfg(test)]
 mod tests {
 	use libp2p::PeerId;
-	use futures::prelude::*;
+	use futures::{prelude::*, task::Poll};
 	use super::{PeersetConfig, Peerset, Message, IncomingIndex, BANNED_THRESHOLD};
-	use std::{thread, time::Duration};
+	use std::{pin::Pin, thread, time::Duration};
 
 	fn assert_messages(mut peerset: Peerset, messages: Vec<Message>) -> Peerset {
 		for expected_message in messages {
@@ -498,9 +499,7 @@ mod tests {
 	}
 
 	fn next_message(peerset: Peerset) -> Result<(Message, Peerset), ()> {
-		let (next, peerset) = peerset.into_future()
-			.wait()
-			.map_err(|_| ())?;
+		let (next, peerset) = futures::executor::block_on(peerset.into_future());
 		let message = next.ok_or_else(|| ())?;
 		Ok((message, peerset))
 	}
@@ -598,13 +597,13 @@ mod tests {
 		let peer_id = PeerId::random();
 		handle.report_peer(peer_id.clone(), BANNED_THRESHOLD - 1);
 
-		let fut = futures::future::poll_fn(move || -> Result<_, ()> {
+		let fut = futures::future::poll_fn(move |cx| {
 			// We need one polling for the message to be processed.
-			assert_eq!(peerset.poll().unwrap(), Async::NotReady);
+			assert_eq!(Stream::poll_next(Pin::new(&mut peerset), cx), Poll::Pending);
 
 			// Check that an incoming connection from that node gets refused.
 			peerset.incoming(peer_id.clone(), IncomingIndex(1));
-			if let Async::Ready(msg) = peerset.poll().unwrap() {
+			if let Poll::Ready(msg) = Stream::poll_next(Pin::new(&mut peerset), cx) {
 				assert_eq!(msg.unwrap(), Message::Reject(IncomingIndex(1)));
 			} else {
 				panic!()
@@ -615,14 +614,14 @@ mod tests {
 
 			// Try again. This time the node should be accepted.
 			peerset.incoming(peer_id.clone(), IncomingIndex(2));
-			while let Async::Ready(msg) = peerset.poll().unwrap() {
+			while let Poll::Ready(msg) = Stream::poll_next(Pin::new(&mut peerset), cx) {
 				assert_eq!(msg.unwrap(), Message::Accept(IncomingIndex(2)));
 			}
 
-			Ok(Async::Ready(()))
+			Poll::Ready(())
 		});
 
-		tokio::runtime::current_thread::Runtime::new().unwrap().block_on(fut).unwrap();
+		futures::executor::block_on(fut)
 	}
 }
 

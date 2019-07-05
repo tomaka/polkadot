@@ -29,7 +29,7 @@ use log::{debug, error};
 use smallvec::{smallvec, SmallVec};
 use std::{borrow::Cow, error, fmt, io, marker::PhantomData, mem, time::Duration};
 use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_timer::{Delay, clock::Clock};
+use futures_timer::{Delay, clock::Clock};
 
 /// Implements the `IntoProtocolsHandler` trait of libp2p.
 ///
@@ -360,7 +360,7 @@ where
 						error!(target: "sub-libp2p", "Handler initialization process is too long \
 							with {:?}", self.remote_peer_id)
 					},
-					Ok(Async::NotReady) => {}
+					Poll::Pending => {}
 					Err(_) => error!(target: "sub-libp2p", "Tokio timer has errored")
 				}
 
@@ -379,7 +379,7 @@ where
 						self.state = ProtocolState::Opening { deadline };
 						Some(ProtocolsHandlerEvent::Custom(event))
 					},
-					Ok(Async::NotReady) => {
+					Poll::Pending => {
 						self.state = ProtocolState::Opening { deadline };
 						None
 					},
@@ -396,7 +396,7 @@ where
 				for n in (0..substreams.len()).rev() {
 					let mut substream = substreams.swap_remove(n);
 					match substream.poll() {
-						Ok(Async::NotReady) => substreams.push(substream),
+						Poll::Pending => substreams.push(substream),
 						Ok(Async::Ready(Some(RegisteredProtocolEvent::Message(message)))) => {
 							let event = CustomProtoHandlerOut::CustomMessage {
 								message
@@ -611,7 +611,7 @@ where TSubstream: AsyncRead + AsyncWrite, TMessage: CustomMessage {
 			return Ok(Async::Ready(event))
 		}
 
-		Ok(Async::NotReady)
+		Poll::Pending
 	}
 }
 
@@ -635,7 +635,7 @@ where TSubstream: AsyncRead + AsyncWrite, TMessage: CustomMessage {
 		loop {
 			match substream.poll() {
 				Ok(Async::Ready(Some(_))) => {}
-				Ok(Async::NotReady) => break,
+				Poll::Pending => break,
 				Err(_) | Ok(Async::Ready(None)) => continue 'outer,
 			}
 		}

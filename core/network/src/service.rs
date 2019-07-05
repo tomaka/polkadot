@@ -24,7 +24,7 @@ use log::{warn, error, info};
 use libp2p::core::swarm::NetworkBehaviour;
 use libp2p::core::{transport::boxed::Boxed, muxing::StreamMuxerBox};
 use libp2p::{Multiaddr, multihash::Multihash};
-use futures::{prelude::*, sync::oneshot, sync::mpsc};
+use futures::{prelude::*, sync::oneshot, channel::mpsc};
 use parking_lot::{Mutex, RwLock};
 use crate::protocol::Protocol;
 use crate::{behaviour::{Behaviour, BehaviourOut}, parse_str_addr};
@@ -246,7 +246,7 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, H: ExHashT> NetworkWorker
 			network_port,
 			protocol_rx,
 			on_demand_in: params.on_demand.and_then(|od| od.extract_receiver()),
-			connected_peers_interval: tokio_timer::Interval::new_interval(CONNECTED_PEERS_INTERVAL),
+			connected_peers_interval: futures_timer::Interval::new_interval(CONNECTED_PEERS_INTERVAL),
 		})
 	}
 
@@ -607,7 +607,7 @@ pub struct NetworkWorker<B: BlockT + 'static, S: NetworkSpecialization<B>, H: Ex
 	on_demand_in: Option<mpsc::UnboundedReceiver<RequestData<B>>>,
 
 	/// Interval at which we update the `connected_peers` Arc.
-	connected_peers_interval: tokio_timer::Interval,
+	connected_peers_interval: futures_timer::Interval,
 }
 
 impl<B: BlockT + 'static, S: NetworkSpecialization<B>, H: ExHashT> Future for NetworkWorker<B, S, H> {
@@ -694,7 +694,7 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, H: ExHashT> Future for Ne
 
 		loop {
 			match self.network_port.poll() {
-				Ok(Async::NotReady) => break,
+				Poll::Pending => break,
 				Ok(Async::Ready(Some(NetworkMsg::Outgoing(who, outgoing_message)))) =>
 					self.network_service.lock().user_protocol_mut().send_packet(&who, outgoing_message),
 				Ok(Async::Ready(Some(NetworkMsg::ReportPeer(who, reputation)))) =>
@@ -713,7 +713,7 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, H: ExHashT> Future for Ne
 			let msg = match self.protocol_rx.poll() {
 				Ok(Async::Ready(Some(msg))) => msg,
 				Ok(Async::Ready(None)) | Err(_) => return Ok(Async::Ready(())),
-				Ok(Async::NotReady) => break,
+				Poll::Pending => break,
 			};
 
 			let mut network_service = self.network_service.lock();
@@ -770,7 +770,7 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, H: ExHashT> Future for Ne
 			let poll_value = network_service.poll();
 
 			let outcome = match poll_value {
-				Ok(Async::NotReady) => break,
+				Poll::Pending => break,
 				Ok(Async::Ready(Some(BehaviourOut::SubstrateAction(outcome)))) => outcome,
 				Ok(Async::Ready(Some(BehaviourOut::Dht(ev)))) => {
 					network_service.user_protocol_mut()
@@ -802,7 +802,7 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, H: ExHashT> Future for Ne
 			SyncState::Downloading => true,
 		}, Ordering::Relaxed);
 
-		Ok(Async::NotReady)
+		Poll::Pending
 	}
 }
 

@@ -20,7 +20,7 @@ use std::sync::{Arc, atomic::{self, AtomicUsize}};
 use log::{error, warn};
 use jsonrpc_pubsub::{SubscriptionId, typed::{Sink, Subscriber}};
 use parking_lot::Mutex;
-use crate::rpc::futures::sync::oneshot;
+use crate::rpc::futures::channel::oneshot;
 use crate::rpc::futures::{Future, future};
 
 type Id = u64;
@@ -53,12 +53,12 @@ impl IdProvider {
 pub struct Subscriptions {
 	next_id: IdProvider,
 	active_subscriptions: Arc<Mutex<HashMap<Id, oneshot::Sender<()>>>>,
-	executor: Arc<dyn future::Executor<Box<dyn Future<Item = (), Error = ()> + Send>> + Send + Sync>,
+	executor: Arc<dyn future::Executor<Box<dyn Future<Output = Result<(), ()>> + Send>> + Send + Sync>,
 }
 
 impl Subscriptions {
 	/// Creates new `Subscriptions` object.
-	pub fn new(executor: Arc<dyn future::Executor<Box<dyn Future<Item = (), Error = ()> + Send>> + Send + Sync>) -> Self {
+	pub fn new(executor: Arc<dyn future::Executor<Box<dyn Future<Output = Result<(), ()>> + Send>> + Send + Sync>) -> Self {
 		Subscriptions {
 			next_id: Default::default(),
 			active_subscriptions: Default::default(),
@@ -73,7 +73,7 @@ impl Subscriptions {
 	/// or will be cancelled in case #cancel is invoked.
 	pub fn add<T, E, G, R, F>(&self, subscriber: Subscriber<T, E>, into_future: G) where
 		G: FnOnce(Sink<T, E>) -> R,
-		R: future::IntoFuture<Future=F, Item=(), Error=()>,
+		R: future::Future<Future=F, Item=(), Error=()>,
 		F: future::Future<Item=(), Error=()> + Send + 'static,
 	{
 		let id = self.next_id.next_id();

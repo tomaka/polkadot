@@ -29,7 +29,7 @@ use futures::stream::Fuse;
 use grandpa::voter;
 use parking_lot::Mutex;
 use runtime_primitives::traits::{Block as BlockT, Header as HeaderT, NumberFor};
-use tokio_timer::Interval;
+use futures_timer::Interval;
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{atomic::{AtomicUsize, Ordering}, Arc};
@@ -129,7 +129,7 @@ impl<Block: BlockT, Status, I, M> Stream for UntilImported<Block, Status, I, M> 
 						|ready_item| ready.push_back(ready_item),
 					)?;
 				}
-				Async::NotReady => break,
+				Poll::Pending => break,
 			}
 		}
 
@@ -147,7 +147,7 @@ impl<Block: BlockT, Status, I, M> Stream for UntilImported<Block, Status, I, M> 
 						self.ready.extend(ready_messages);
 				 	}
 				}
-				Ok(Async::NotReady) => break,
+				Poll::Pending => break,
 			}
 		}
 
@@ -195,7 +195,7 @@ impl<Block: BlockT, Status, I, M> Stream for UntilImported<Block, Status, I, M> 
 			Ok(Async::Ready(None))
 		} else {
 
-			Ok(Async::NotReady)
+			Poll::Pending
 		}
 	}
 }
@@ -430,12 +430,12 @@ mod tests {
 	use super::*;
 	use crate::{CatchUp, CompactCommit};
 	use tokio::runtime::current_thread::Runtime;
-	use tokio_timer::Delay;
+	use futures_timer::Delay;
 	use test_client::runtime::{Block, Hash, Header};
 	use consensus_common::BlockOrigin;
 	use client::BlockImportNotification;
 	use futures::future::Either;
-	use futures::sync::mpsc;
+	use futures::channel::mpsc;
 	use grandpa::Precommit;
 
 	#[derive(Clone)]

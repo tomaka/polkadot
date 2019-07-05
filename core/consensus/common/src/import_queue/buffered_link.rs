@@ -32,8 +32,9 @@
 //! ```
 //!
 
-use futures::{prelude::*, sync::mpsc};
+use futures::{prelude::*, channel::mpsc, task::Context, task::Poll};
 use runtime_primitives::traits::{Block as BlockT, NumberFor};
+use std::pin::Pin;
 use crate::import_queue::{Origin, Link, SharedFinalityProofRequestBuilder};
 
 /// Wraps around an unbounded channel from the `futures` crate. The sender implements `Link` and
@@ -138,10 +139,10 @@ impl<B: BlockT> BufferedLinkReceiver<B> {
 	///
 	/// This method should behave in a way similar to `Future::poll`. It can register the current
 	/// task and notify later when more actions are ready to be polled. To continue the comparison,
-	/// it is as if this method always returned `Ok(Async::NotReady)`.
-	pub fn poll_actions(&mut self, link: &mut dyn Link<B>) {
+	/// it is as if this method always returned `Ok(Poll::Pending)`.
+	pub fn poll_actions(&mut self, cx: &mut Context, link: &mut dyn Link<B>) {
 		loop {
-			let msg = if let Ok(Async::Ready(Some(msg))) = self.rx.poll() {
+			let msg = if let Poll::Ready(Some(msg)) = Stream::poll_next(Pin::new(&mut self.rx), cx) {
 				msg
 			} else {
 				break

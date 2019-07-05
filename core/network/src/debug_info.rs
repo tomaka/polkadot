@@ -27,7 +27,7 @@ use log::{debug, trace, error};
 use std::collections::hash_map::Entry;
 use std::time::{Duration, Instant};
 use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_timer::Interval;
+use futures_timer::Interval;
 
 /// Time after we disconnect from a node before we purge its information from the cache.
 const CACHE_EXPIRE: Duration = Duration::from_secs(10 * 60);
@@ -262,7 +262,7 @@ where TSubstream: AsyncRead + AsyncWrite {
 	> {
 		loop {
 			match self.ping.poll(params) {
-				Async::NotReady => break,
+				Poll::Pending => break,
 				Async::Ready(NetworkBehaviourAction::GenerateEvent(ev)) => {
 					if let PingEvent { peer, result: Ok(PingSuccess::Ping { rtt }) } = ev {
 						self.handle_ping_report(&peer, rtt)
@@ -284,7 +284,7 @@ where TSubstream: AsyncRead + AsyncWrite {
 
 		loop {
 			match self.identify.poll(params) {
-				Async::NotReady => break,
+				Poll::Pending => break,
 				Async::Ready(NetworkBehaviourAction::GenerateEvent(event)) => {
 					match event {
 						IdentifyEvent::Identified { peer_id, info, .. } => {
@@ -319,6 +319,6 @@ where TSubstream: AsyncRead + AsyncWrite {
 			});
 		}
 
-		Async::NotReady
+		Poll::Pending
 	}
 }

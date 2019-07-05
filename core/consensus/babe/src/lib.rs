@@ -80,7 +80,7 @@ use client::{
 };
 use slots::{CheckedHeader, check_equivocation};
 use futures::{Future, IntoFuture, future};
-use tokio_timer::Timeout;
+use futures_timer::Timeout;
 use log::{error, warn, debug, info, trace};
 
 use slots::{SlotWorker, SlotData, SlotInfo, SlotCompatible, SignedDuration};
@@ -1044,7 +1044,7 @@ mod tests {
 			.map(drop)
 			.map_err(drop);
 
-		let drive_to_completion = futures::future::poll_fn(|| { net.lock().poll(); Ok(Async::NotReady) });
+		let drive_to_completion = futures::future::poll_fn(|| { net.lock().poll(); Poll::Pending });
 		let _ = runtime.block_on(wait_for.select(drive_to_completion).map_err(drop)).unwrap();
 	}
 

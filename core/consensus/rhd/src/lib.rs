@@ -61,7 +61,7 @@ use transaction_pool::txpool::{self, Pool as TransactionPool};
 
 use futures::prelude::*;
 use futures::future;
-use futures::sync::oneshot;
+use futures::channel::oneshot;
 use tokio::runtime::TaskExecutor;
 use tokio::timer::Delay;
 use parking_lot::{RwLock, Mutex};
@@ -370,13 +370,13 @@ impl<B, P, I, InStream, OutSink> Future for BftFuture<B, P, I, InStream, OutSink
 		// service has canceled the future. bail
 		let cancel = match self.cancel.poll() {
 			Ok(Async::Ready(())) | Err(_) => true,
-			Ok(Async::NotReady) => false,
+			Poll::Pending => false,
 		};
 
 		let committed = match self.inner.poll().map_err(|_| ()) {
 			Ok(Async::Ready(x)) => x,
-			Ok(Async::NotReady) =>
-				return Ok(if cancel { Async::Ready(()) } else { Async::NotReady }),
+			Poll::Pending =>
+				return Ok(if cancel { Async::Ready(()) } else { Poll::Pending }),
 			Err(()) => return Err(()),
 		};
 
@@ -724,7 +724,7 @@ impl<B: Block, S: Stream<Item=Vec<u8>>> Stream for CheckedStream<B, S>
 					}
 				}
 				Async::Ready(None) => return Ok(Async::Ready(None)),
-				Async::NotReady => return Ok(Async::NotReady),
+				Poll::Pending => return Poll::Pending,
 			}
 		}
 	}
@@ -1371,7 +1371,7 @@ mod tests {
 		type Error = E;
 
 		fn poll(&mut self) -> ::futures::Poll<Option<Self::Item>, Self::Error> {
-			Ok(::futures::Async::NotReady)
+			Ok(::futures::Poll::Pending)
 		}
 	}
 

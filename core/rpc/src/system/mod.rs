@@ -23,7 +23,7 @@ pub mod helpers;
 mod tests;
 
 use crate::helpers::Receiver;
-use futures::sync::{mpsc, oneshot};
+use futures::channel::{mpsc, oneshot};
 use jsonrpc_derive::rpc;
 use network;
 use runtime_primitives::traits::{self, Header as HeaderT};

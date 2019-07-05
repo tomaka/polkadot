@@ -94,7 +94,7 @@ impl<C, S, Block> OffchainWorkers<C, S, Block> where
 		&self,
 		number: &<Block::Header as traits::Header>::Number,
 		pool: &Arc<Pool<A>>,
-	) -> impl Future<Item = (), Error = ()> where
+	) -> impl Future<Output = ()> where
 		A: ChainApi<Block=Block> + 'static,
 	{
 		let runtime = self.client.runtime_api();
@@ -111,9 +111,9 @@ impl<C, S, Block> OffchainWorkers<C, S, Block> where
 			debug!("Running offchain workers at {:?}", at);
 			let api = Box::new(api);
 			runtime.offchain_worker_with_context(&at, ExecutionContext::OffchainWorker(api), *number).unwrap();
-			futures::future::Either::A(runner.process())
+			futures::future::Either::Left(runner.process())
 		} else {
-			futures::future::Either::B(futures::future::ok(()))
+			futures::future::Either::Right(futures::future::ready(()))
 		}
 	}
 }

@@ -6,11 +6,11 @@ edition = "2018"
 
 [dependencies]
 fork-tree = { path = "../../core/utils/fork-tree" }
-futures = "0.1"
+futures-preview = "0.3.0-alpha.17"
 log = "0.4"
 parking_lot = "0.8.0"
 tokio-executor = "0.1.7"
-tokio-timer = "0.2.11"
+futures-timer = "0.2.1"
 rand = "0.6"
 parity-codec = { version = "4.1.1", features = ["derive"] }
 runtime_primitives = { package = "sr-primitives", path = "../sr-primitives" }

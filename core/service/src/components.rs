@@ -234,7 +234,7 @@ pub trait OffchainWorker<C: Components> {
 			ComponentBlock<C>
 		>,
 		pool: &Arc<TransactionPool<C::TransactionPoolApi>>,
-	) -> error::Result<Box<dyn Future<Item = (), Error = ()> + Send>>;
+	) -> error::Result<Box<dyn Future<Output = Result<(), ()>> + Send>>;
 }
 
 impl<C: Components> OffchainWorker<Self> for C where
@@ -249,7 +249,7 @@ impl<C: Components> OffchainWorker<Self> for C where
 			ComponentBlock<C>
 		>,
 		pool: &Arc<TransactionPool<C::TransactionPoolApi>>,
-	) -> error::Result<Box<dyn Future<Item = (), Error = ()> + Send>> {
+	) -> error::Result<Box<dyn Future<Output = Result<(), ()>> + Send>> {
 		Ok(Box::new(offchain.on_block_imported(number, pool)))
 	}
 }
@@ -273,7 +273,7 @@ impl<C: Components, T> ServiceTrait<C> for T where
 {}
 
 /// Alias for a an implementation of `futures::future::Executor`.
-pub type TaskExecutor = Arc<dyn Executor<Box<dyn Future<Item = (), Error = ()> + Send>> + Send + Sync>;
+pub type TaskExecutor = Arc<dyn Executor<Box<dyn Future<Output = Result<(), ()>> + Send>> + Send + Sync>;
 
 /// A collection of types and methods to build a service on top of the substrate service.
 pub trait ServiceFactory: 'static + Sized {

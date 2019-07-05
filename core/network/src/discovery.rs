@@ -24,7 +24,7 @@ use libp2p::multiaddr::Protocol;
 use log::{debug, info, trace, warn};
 use std::{cmp, collections::VecDeque, num::NonZeroU8, time::Duration};
 use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_timer::{Delay, clock::Clock};
+use futures_timer::{Delay, clock::Clock};
 
 /// Implementation of `NetworkBehaviour` that discovers the nodes on the network.
 pub struct DiscoveryBehaviour<TSubstream> {
@@ -196,7 +196,7 @@ where
 		// Poll the stream that fires when we need to start a random Kademlia query.
 		loop {
 			match self.next_kad_random_query.poll() {
-				Ok(Async::NotReady) => break,
+				Poll::Pending => break,
 				Ok(Async::Ready(_)) => {
 					let random_peer_id = PeerId::random();
 					debug!(target: "sub-libp2p", "Libp2p <= Starting random Kademlia request for \
@@ -218,7 +218,7 @@ where
 		// Poll Kademlia.
 		loop {
 			match self.kademlia.poll(params) {
-				Async::NotReady => break,
+				Poll::Pending => break,
 				Async::Ready(NetworkBehaviourAction::GenerateEvent(ev)) => {
 					match ev {
 						KademliaOut::Discovered { .. } => {}
@@ -276,7 +276,7 @@ where
 			}
 		}
 
-		Async::NotReady
+		Poll::Pending
 	}
 }
 
@@ -356,7 +356,7 @@ mod tests {
 			if to_discover.iter().all(|l| l.is_empty()) {
 				Ok(Async::Ready(()))
 			} else {
-				Ok(Async::NotReady)
+				Poll::Pending
 			}
 		});
 

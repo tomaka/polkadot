@@ -20,7 +20,7 @@ use network::{self, PeerId};
 use network::config::Roles;
 use test_client::runtime::Block;
 use assert_matches::assert_matches;
-use futures::{prelude::*, sync::mpsc};
+use futures::{prelude::*, channel::mpsc};
 use std::thread;
 
 struct Status {

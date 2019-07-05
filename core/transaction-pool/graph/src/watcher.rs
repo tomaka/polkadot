@@ -18,7 +18,7 @@
 
 use futures::{
 	Stream,
-	sync::mpsc,
+	channel::mpsc,
 };
 use serde::{Serialize, Deserialize};
 
@@ -60,9 +60,9 @@ impl<H, H2> Watcher<H, H2> {
 	/// Pipe the notifications to given sink.
 	///
 	/// Make sure to drive the future to completion.
-	pub fn into_stream(self) -> impl Stream<Item=Status<H, H2>, Error=()> {
+	pub fn into_stream(self) -> impl Stream<Item = Status<H, H2>> {
 		// we can safely ignore the error here, `UnboundedReceiver` never fails.
-		self.receiver.map_err(|_| ())
+		self.receiver
 	}
 }
 

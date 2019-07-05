@@ -28,7 +28,7 @@
 //!
 //! NOTE: Aura itself is designed to be generic over the crypto used.
 #![forbid(missing_docs, unsafe_code)]
-use std::{sync::Arc, time::Duration, thread, marker::PhantomData, hash::Hash, fmt::Debug};
+use std::{io, sync::Arc, time::Duration, thread, marker::PhantomData, hash::Hash, fmt::Debug};
 
 use parity_codec::{Encode, Decode, Codec};
 use consensus_common::{self, BlockImport, Environment, Proposer,
@@ -53,8 +53,8 @@ use runtime_primitives::traits::{Block, Header, DigestItemFor, ProvideRuntimeApi
 use primitives::Pair;
 use inherents::{InherentDataProviders, InherentData};
 
-use futures::{Future, IntoFuture, future};
-use tokio_timer::Timeout;
+use futures::{prelude::*, future};
+use futures_timer::ext::FutureExt as _;
 use log::{error, warn, debug, info, trace};
 
 use srml_aura::{
@@ -139,20 +139,20 @@ pub fn start_aura<B, C, SC, E, I, P, SO, Error, H>(
 	sync_oracle: SO,
 	inherent_data_providers: InherentDataProviders,
 	force_authoring: bool,
-) -> Result<impl Future<Item=(), Error=()>, consensus_common::Error> where
+) -> Result<impl Future<Output = ()>, consensus_common::Error> where
 	B: Block<Header=H>,
 	C: ProvideRuntimeApi + ProvideCache<B> + AuxStore + Send + Sync,
 	C::Api: AuraApi<B, AuthorityId<P>>,
 	SC: SelectChain<B>,
 	E::Proposer: Proposer<B, Error=Error>,
-	<<E::Proposer as Proposer<B>>::Create as IntoFuture>::Future: Send + 'static,
+	<E::Proposer as Proposer<B>>::Create: Send + Unpin + 'static,
 	P: Pair + Send + Sync + 'static,
 	P::Public: Hash + Member + Encode + Decode,
 	P::Signature: Hash + Member + Encode + Decode,
 	H: Header<Hash=B::Hash>,
 	E: Environment<B, Error=Error>,
 	I: BlockImport<B> + Send + Sync + 'static,
-	Error: ::std::error::Error + Send + From<::consensus_common::Error> + From<I::Error> + 'static,
+	Error: ::std::error::Error + Send + From<::consensus_common::Error> + From<I::Error> + From<io::Error> + 'static,
 	SO: SyncOracle + Send + Sync + Clone,
 {
 	let worker = AuraWorker {
@@ -192,16 +192,16 @@ impl<H, B, C, E, I, P, Error, SO> SlotWorker<B> for AuraWorker<C, E, I, P, SO> w
 	C::Api: AuraApi<B, AuthorityId<P>>,
 	E: Environment<B, Error=Error>,
 	E::Proposer: Proposer<B, Error=Error>,
-	<<E::Proposer as Proposer<B>>::Create as IntoFuture>::Future: Send + 'static,
+	<E::Proposer as Proposer<B>>::Create: Send + Unpin + 'static,
 	H: Header<Hash=B::Hash>,
 	I: BlockImport<B> + Send + Sync + 'static,
 	P: Pair + Send + Sync + 'static,
 	P::Public: Member + Encode + Decode + Hash,
 	P::Signature: Member + Encode + Decode + Hash + Debug,
 	SO: SyncOracle + Send + Clone,
-	Error: ::std::error::Error + Send + From<::consensus_common::Error> + From<I::Error> + 'static,
+	Error: ::std::error::Error + Send + From<::consensus_common::Error> + From<I::Error> + From<io::Error> + 'static,
 {
-	type OnSlot = Box<dyn Future<Item=(), Error=consensus_common::Error> + Send>;
+	type OnSlot = Box<dyn Future<Output = Result<(), consensus_common::Error>> + Send + Unpin>;
 
 	fn on_slot(
 		&self,
@@ -267,8 +267,8 @@ impl<H, B, C, E, I, P, Error, SO> SlotWorker<B> for AuraWorker<C, E, I, P, SO> w
 				let remaining_duration = slot_info.remaining_duration();
 				// deadline our production to approx. the end of the
 				// slot
-				Timeout::new(
-					proposer.propose(
+				proposer
+					.propose(
 						slot_info.inherent_data,
 						generic::Digest {
 							logs: vec![
@@ -276,15 +276,14 @@ impl<H, B, C, E, I, P, Error, SO> SlotWorker<B> for AuraWorker<C, E, I, P, SO> w
 							],
 						},
 						remaining_duration,
-					).into_future(),
-					remaining_duration,
-				)
+					)
+					.timeout(remaining_duration)
 			} else {
 				return Box::new(future::ok(()));
 			}
 		};
 
-		Box::new(proposal_work.map(move |b| {
+		Box::new(proposal_work.map_ok(move |b| {
 			// minor hack since we don't have access to the timestamp
 			// that is actually set by the proposer.
 			let slot_after_building = SignedDuration::default().slot_now(slot_duration);
@@ -867,7 +866,7 @@ mod tests {
 			.map(|_| ())
 			.map_err(|_| ());
 
-		let drive_to_completion = futures::future::poll_fn(|| { net.lock().poll(); Ok(Async::NotReady) });
+		let drive_to_completion = futures::future::poll_fn(|| { net.lock().poll(); Poll::Pending });
 		let _ = runtime.block_on(wait_for.select(drive_to_completion).map_err(|_| ())).unwrap();
 	}
 

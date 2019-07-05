@@ -121,7 +121,7 @@ pub fn import_blocks<F, E, R>(
 	mut config: FactoryFullConfiguration<F>,
 	exit: E,
 	mut input: R
-) -> error::Result<impl Future<Item = (), Error = ()>>
+) -> error::Result<impl Future<Output = Result<(), ()>>>
 	where F: ServiceFactory, E: Future<Item=(),Error=()> + Send + 'static, R: Read,
 {
 	let client = new_client::<F>(&config)?;
@@ -189,7 +189,7 @@ pub fn import_blocks<F, E, R>(
 			info!("Imported {} blocks. Best: #{}", block_count, client.info().chain.best_number);
 			Ok(Async::Ready(()))
 		} else {
-			Ok(Async::NotReady)
+			Poll::Pending
 		}
 	}))
 }

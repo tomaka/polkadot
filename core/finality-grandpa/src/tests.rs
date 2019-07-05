@@ -179,7 +179,7 @@ impl Future for Exit {
 	type Error = ();
 
 	fn poll(&mut self) -> Poll<(), ()> {
-		Ok(Async::NotReady)
+		Poll::Pending
 	}
 }
 
@@ -424,7 +424,7 @@ fn run_to_completion_with<F>(
 		.map(|_| ())
 		.map_err(|_| ());
 
-	let drive_to_completion = futures::future::poll_fn(|| { net.lock().poll(); Ok(Async::NotReady) });
+	let drive_to_completion = futures::future::poll_fn(|| { net.lock().poll(); Poll::Pending });
 	let _ = runtime.block_on(wait_for.select(drive_to_completion).map_err(|_| ())).unwrap();
 
 	let highest_finalized = *highest_finalized.read();
@@ -522,7 +522,7 @@ fn finalize_3_voters_1_full_observer() {
 		.map(|_| ())
 		.map_err(|_| ());
 
-	let drive_to_completion = futures::future::poll_fn(|| { net.lock().poll(); Ok(Async::NotReady) });
+	let drive_to_completion = futures::future::poll_fn(|| { net.lock().poll(); Poll::Pending });
 	let _ = runtime.block_on(wait_for.select(drive_to_completion).map_err(|_| ())).unwrap();
 }
 
@@ -688,7 +688,7 @@ fn transition_3_voters_twice_1_full_observer() {
 		.map(|_| ())
 		.map_err(|_| ());
 
-	let drive_to_completion = futures::future::poll_fn(|| { net.lock().poll(); Ok(Async::NotReady) });
+	let drive_to_completion = futures::future::poll_fn(|| { net.lock().poll(); Poll::Pending });
 	let _ = runtime.block_on(wait_for.select(drive_to_completion).map_err(|_| ())).unwrap();
 }
 
@@ -796,7 +796,7 @@ fn sync_justifications_on_change_blocks() {
 	runtime.block_on(futures::future::poll_fn(move || -> std::result::Result<_, ()> {
 		if net.lock().peer(3).client().justification(&BlockId::Number(21)).unwrap().is_none() {
 			net.lock().poll();
-			Ok(Async::NotReady)
+			Poll::Pending
 		} else {
 			Ok(Async::Ready(()))
 		}
@@ -1046,7 +1046,7 @@ fn voter_persists_its_votes() {
 	use std::iter::FromIterator;
 	use std::sync::atomic::{AtomicUsize, Ordering};
 	use futures::future;
-	use futures::sync::mpsc;
+	use futures::channel::mpsc;
 
 	let _ = env_logger::try_init();
 	let mut runtime = current_thread::Runtime::new().unwrap();
@@ -1126,7 +1126,7 @@ fn voter_persists_its_votes() {
 		runtime.spawn(voter);
 	}
 
-	let (exit_tx, exit_rx) = futures::sync::oneshot::channel::<()>();
+	let (exit_tx, exit_rx) = futures::channel::oneshot::channel::<()>();
 
 	// create the communication layer for bob, but don't start any
 	// voter. instead we'll listen for the prevote that alice casts
@@ -1187,7 +1187,7 @@ fn voter_persists_its_votes() {
 				let net = net.clone();
 				let voter_tx = voter_tx.clone();
 				let round_tx = round_tx.clone();
-				future::Either::A(tokio_timer::Interval::new_interval(Duration::from_millis(200))
+				future::Either::A(futures_timer::Interval::new_interval(Duration::from_millis(200))
 					.take_while(move |_| {
 						Ok(net2.lock().peer(1).client().info().chain.best_number != 40)
 					})
@@ -1248,7 +1248,7 @@ fn voter_persists_its_votes() {
 		}).map_err(|_| ()));
 	}
 
-	let drive_to_completion = futures::future::poll_fn(|| { net.lock().poll(); Ok(Async::NotReady) });
+	let drive_to_completion = futures::future::poll_fn(|| { net.lock().poll(); Poll::Pending });
 	let exit = exit_rx.into_future().map(|_| ()).map_err(|_| ());
 
 	runtime.block_on(drive_to_completion.select(exit).map(|_| ()).map_err(|_| ())).unwrap();
@@ -1318,7 +1318,7 @@ fn finality_proof_is_fetched_by_light_client_when_consensus_data_changes() {
 			Ok(Async::Ready(()))
 		} else {
 			net.lock().poll();
-			Ok(Async::NotReady)
+			Poll::Pending
 		}
 	})).unwrap()
 }
@@ -1488,6 +1488,6 @@ fn voter_catches_up_to_latest_round_when_behind() {
 			})
 	};
 
-	let drive_to_completion = futures::future::poll_fn(|| { net.lock().poll(); Ok(Async::NotReady) });
+	let drive_to_completion = futures::future::poll_fn(|| { net.lock().poll(); Poll::Pending });
 	let _ = runtime.block_on(test.select(drive_to_completion).map_err(|_| ())).unwrap();
 }

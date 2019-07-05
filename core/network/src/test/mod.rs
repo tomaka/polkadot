@@ -216,7 +216,7 @@ pub struct Peer<D, S: NetworkSpecialization<Block>> {
 	/// instead of going through the import queue.
 	block_import: Arc<dyn BlockImport<Block, Error = ConsensusError>>,
 	network: NetworkWorker<Block, S, <Block as BlockT>::Hash>,
-	to_poll: smallvec::SmallVec<[Box<dyn Future<Item = (), Error = ()> + Send>; 2]>,
+	to_poll: smallvec::SmallVec<[Box<dyn Future<Output = Result<(), ()>> + Send>; 2]>,
 }
 
 impl<D, S: NetworkSpecialization<Block>> Peer<D, S> {
@@ -481,8 +481,8 @@ pub trait TestNetFactory: Sized {
 								None => return Ok(Async::Ready(None)),
 								Some(last) => break last,
 							},
-							Async::NotReady => match last {
-								None => return Ok(Async::NotReady),
+							Poll::Pending => match last {
+								None => return Poll::Pending,
 								Some(last) => break last,
 							},
 						}
@@ -603,7 +603,7 @@ pub trait TestNetFactory: Sized {
 			match (highest, peer.client.info().chain.best_number) {
 				(None, b) => highest = Some(b),
 				(Some(ref a), ref b) if a == b => {},
-				(Some(_), _) => return Async::NotReady,
+				(Some(_), _) => return Poll::Pending,
 			}
 		}
 		Async::Ready(())
@@ -621,7 +621,7 @@ pub trait TestNetFactory: Sized {
 		self.mut_peers(|peers| {
 			for peer in peers {
 				peer.network.poll().unwrap();
-				peer.to_poll.retain(|f| f.poll() == Ok(Async::NotReady));
+				peer.to_poll.retain(|f| f.poll() == Poll::Pending);
 			}
 		});
 	}

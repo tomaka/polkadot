@@ -6,13 +6,13 @@ edition = "2018"
 
 [dependencies]
 derive_more = "0.14.0"
-futures = "0.1.17"
+futures-preview = "0.3.0-alpha.17"
 parking_lot = "0.8.0"
 lazy_static = "1.0"
 log = "0.4"
 slog = {version = "^2", features = ["nested-values"]}
 tokio-executor = "0.1.7"
-tokio-timer = "0.2"
+futures-timer = "0.2.1"
 exit-future = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

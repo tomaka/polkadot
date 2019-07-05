@@ -16,7 +16,7 @@
 
 //! Tests for the communication portion of the GRANDPA crate.
 
-use futures::sync::mpsc;
+use futures::channel::mpsc;
 use futures::prelude::*;
 use network::consensus_gossip as network_gossip;
 use network::test::{Block, Hash};
@@ -122,7 +122,7 @@ impl Tester {
 				Async::Ready(Some(item)) => if pred(item) {
 					return Ok(Async::Ready(s.take().unwrap()))
 				},
-				Async::NotReady => return Ok(Async::NotReady),
+				Poll::Pending => return Poll::Pending,
 			}
 		})
 	}
@@ -181,7 +181,7 @@ fn make_test_network() -> (
 		type Error = ();
 
 		fn poll(&mut self) -> Poll<(), ()> {
-			Ok(Async::NotReady)
+			Poll::Pending
 		}
 	}
 

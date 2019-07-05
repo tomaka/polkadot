@@ -217,9 +217,9 @@ where TSubstream: AsyncRead + AsyncWrite, TMessage: CustomMessage {
 				if !self.requires_poll_complete && self.send_queue.is_empty() {
 					Ok(Async::Ready(None))
 				} else {
-					Ok(Async::NotReady)
+					Poll::Pending
 				}
-			Async::NotReady => Ok(Async::NotReady),
+			Poll::Pending => Poll::Pending,
 		}
 	}
 }

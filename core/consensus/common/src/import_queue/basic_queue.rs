@@ -14,8 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
-use std::sync::Arc;
-use futures::{prelude::*, future::Executor, sync::mpsc};
+use std::{pin::Pin, sync::Arc};
+use futures::{prelude::*, channel::mpsc, task::Context, task::Poll};
 use runtime_primitives::{Justification, traits::{Block as BlockT, Header as HeaderT, NumberFor}};
 
 use crate::error::Error as ConsensusError;
@@ -49,11 +49,11 @@ pub struct BasicQueue<B: BlockT> {
 	/// the task to spawn here, then extract it as soon as we are in a tokio context.
 	/// If `Some`, contains the task to spawn in the background. If `None`, the future has already
 	/// been spawned.
-	future_to_spawn: Option<Box<dyn Future<Item = (), Error = ()> + Send>>,
+	future_to_spawn: Option<Box<dyn Future<Output = ()> + Send + Unpin>>,
 	/// If it isn't possible to spawn the future in `future_to_spawn` (which is notably the case in
 	/// "no std" environment), we instead put it in `manual_poll`. It is then polled manually from
 	/// `poll_actions`.
-	manual_poll: Option<Box<dyn Future<Item = (), Error = ()> + Send>>,
+	manual_poll: Option<Box<dyn Future<Output = ()> + Send + Unpin>>,
 }
 
 impl<B: BlockT> BasicQueue<B> {
@@ -121,20 +121,21 @@ impl<B: BlockT> ImportQueue<B> for BasicQueue<B> {
 		let _ = self.sender.unbounded_send(ToWorkerMsg::ImportFinalityProof(who, hash, number, finality_proof));
 	}
 
-	fn poll_actions(&mut self, link: &mut dyn Link<B>) {
+	fn poll_actions(&mut self, cx: &mut Context, link: &mut dyn Link<B>) {
 		// Try to spawn the future in `future_to_spawn`.
 		if let Some(future) = self.future_to_spawn.take() {
-			if let Err(err) = tokio_executor::DefaultExecutor::current().execute(future) {
-				debug_assert!(self.manual_poll.is_none());
-				self.manual_poll = Some(err.into_future());
-			}
+			// FIXME:
+			//if let Err(err) = tokio_executor::DefaultExecutor::current().execute(future) {
+				//debug_assert!(self.manual_poll.is_none());
+				self.manual_poll = Some(future);// Some(err.into_future());
+			//}
 		}
 
 		// As a backup mechanism, if we failed to spawn the `future_to_spawn`, we instead poll
 		// manually here.
 		if let Some(manual_poll) = self.manual_poll.as_mut() {
-			match manual_poll.poll() {
-				Ok(Async::NotReady) => {}
+			match Future::poll(Pin::new(manual_poll), cx) {
+				Poll::Pending => {}
 				_ => self.manual_poll = None,
 			}
 		}
@@ -143,7 +144,7 @@ impl<B: BlockT> ImportQueue<B> for BasicQueue<B> {
 			link.set_finality_proof_request_builder(fprb);
 		}
 
-		self.result_port.poll_actions(link);
+		self.result_port.poll_actions(cx, link);
 	}
 }
 
@@ -172,7 +173,7 @@ impl<B: BlockT, V: 'static + Verifier<B>> BlockImportWorker<B, V> {
 		block_import: SharedBlockImport<B>,
 		justification_import: Option<SharedJustificationImport<B>>,
 		finality_proof_import: Option<SharedFinalityProofImport<B>>,
-	) -> (impl Future<Item = (), Error = ()> + Send, mpsc::UnboundedSender<ToWorkerMsg<B>>) {
+	) -> (impl Future<Output = ()> + Send, mpsc::UnboundedSender<ToWorkerMsg<B>>) {
 		let (sender, mut port) = mpsc::unbounded();
 
 		let mut worker = BlockImportWorker {
@@ -195,12 +196,12 @@ impl<B: BlockT, V: 'static + Verifier<B>> BlockImportWorker<B, V> {
 			}
 		}
 
-		let future = futures::future::poll_fn(move || {
+		let future = futures::future::poll_fn(move |cx| {
 			loop {
-				let msg = match port.poll() {
-					Ok(Async::Ready(Some(msg))) => msg,
-					Err(_) | Ok(Async::Ready(None)) => return Ok(Async::Ready(())),
-					Ok(Async::NotReady) => return Ok(Async::NotReady),
+				let msg = match Stream::poll_next(Pin::new(&mut port), cx) {
+					Poll::Ready(Some(msg)) => msg,
+					Poll::Ready(None) => return Poll::Ready(()),
+					Poll::Pending => return Poll::Pending,
 				};
 
 				match msg {

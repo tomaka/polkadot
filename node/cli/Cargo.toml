@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 log = "0.4"
 tokio = "0.1.7"
-futures = "0.1"
+futures-preview = "0.3.0-alpha.17"
 exit-future = "0.1"
 cli = { package = "substrate-cli", path = "../../core/cli" }
 parity-codec = { version = "4.1.1" }

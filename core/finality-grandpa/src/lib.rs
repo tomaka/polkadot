@@ -54,7 +54,7 @@
 
 use futures::prelude::*;
 use log::{debug, info, warn};
-use futures::sync::mpsc;
+use futures::channel::mpsc;
 use client::{BlockchainEvents, CallExecutor, Client, backend::Backend, error::Error as ClientError};
 use client::blockchain::HeaderBackend;
 use parity_codec::Encode;
@@ -224,7 +224,7 @@ pub enum Error {
 	/// An invariant has been violated (e.g. not finalizing pending change blocks in-order)
 	Safety(String),
 	/// A timer failed to fire.
-	Timer(tokio_timer::Error),
+	Timer(futures_timer::Error),
 }
 
 impl From<GrandpaError> for Error {
@@ -637,7 +637,7 @@ pub fn run_grandpa_voter<B, E, Block: BlockT<Hash=H256>, N, RA, SC, X>(
 		// needs to be combined with another future otherwise it can deadlock.
 		let poll_voter = future::poll_fn(move || match maybe_voter {
 			Some(ref mut voter) => voter.poll(),
-			None => Ok(Async::NotReady),
+			None => Poll::Pending,
 		});
 
 		let client = client.clone();

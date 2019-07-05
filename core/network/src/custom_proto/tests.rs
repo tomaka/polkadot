@@ -333,7 +333,7 @@ fn reconnect_after_disconnect() {
 						ServiceState::Disconnected => panic!(),
 					}
 				},
-				Async::NotReady => service1_not_ready = true,
+				Poll::Pending => service1_not_ready = true,
 				_ => panic!()
 			}
 
@@ -357,8 +357,8 @@ fn reconnect_after_disconnect() {
 						ServiceState::Disconnected => panic!(),
 					}
 				},
-				Async::NotReady if service1_not_ready => break,
-				Async::NotReady => {}
+				Poll::Pending if service1_not_ready => break,
+				Poll::Pending => {}
 				_ => panic!()
 			}
 		}
@@ -366,7 +366,7 @@ fn reconnect_after_disconnect() {
 		if service1_state == ServiceState::ConnectedAgain && service2_state == ServiceState::ConnectedAgain {
 			Ok(Async::Ready(()))
 		} else {
-			Ok(Async::NotReady)
+			Poll::Pending
 		}
 	})).unwrap();
 
@@ -374,19 +374,19 @@ fn reconnect_after_disconnect() {
 	let mut delay = tokio::timer::Delay::new(Instant::now() + Duration::from_secs(3));
 	runtime.block_on(future::poll_fn(|| -> Result<_, io::Error> {
 		match service1.poll().unwrap() {
-			Async::NotReady => {},
+			Poll::Pending => {},
 			_ => panic!()
 		}
 
 		match service2.poll().unwrap() {
-			Async::NotReady => {},
+			Poll::Pending => {},
 			_ => panic!()
 		}
 
 		if let Async::Ready(()) = delay.poll().unwrap() {
 			Ok(Async::Ready(()))
 		} else {
-			Ok(Async::NotReady)
+			Poll::Pending
 		}
 	})).unwrap();
 }

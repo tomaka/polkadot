@@ -26,7 +26,7 @@ use smallvec::SmallVec;
 use std::{borrow::Cow, collections::hash_map::Entry, cmp, error, marker::PhantomData, mem};
 use std::time::{Duration, Instant};
 use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_timer::clock::Clock;
+use futures_timer::clock::Clock;
 
 /// Network behaviour that handles opening substreams for custom protocols with other nodes.
 ///
@@ -104,7 +104,7 @@ enum PeerState {
 	/// The peerset requested that we connect to this peer. We are not connected to this node.
 	PendingRequest {
 		/// When to actually start dialing.
-		timer: tokio_timer::Delay,
+		timer: futures_timer::Delay,
 	},
 
 	/// The peerset requested that we connect to this peer. We are currently dialing this peer.
@@ -134,7 +134,7 @@ enum PeerState {
 		/// state mismatch.
 		open: bool,
 		/// When to enable this remote.
-		timer: tokio_timer::Delay,
+		timer: futures_timer::Delay,
 	},
 
 	/// We are connected to this peer and the peerset has accepted it. The handler is in the
@@ -388,7 +388,7 @@ impl<TMessage, TSubstream> CustomProto<TMessage, TSubstream> {
 				debug!(target: "sub-libp2p", "PSM => Connect({:?}): Will start to connect at \
 					until {:?}", occ_entry.key(), until);
 				*occ_entry.into_mut() = PeerState::PendingRequest {
-					timer: tokio_timer::Delay::new(until.clone()),
+					timer: futures_timer::Delay::new(until.clone()),
 				};
 			},
 
@@ -406,7 +406,7 @@ impl<TMessage, TSubstream> CustomProto<TMessage, TSubstream> {
 				*occ_entry.into_mut() = PeerState::DisabledPendingEnable {
 					connected_point: connected_point.clone(),
 					open,
-					timer: tokio_timer::Delay::new(banned.clone()),
+					timer: futures_timer::Delay::new(banned.clone()),
 				};
 			},
 
@@ -959,7 +959,7 @@ where
 					error!(target: "sub-libp2p", "Peerset receiver stream has returned None");
 					break;
 				}
-				Ok(Async::NotReady) => break,
+				Poll::Pending => break,
 				Err(err) => {
 					error!(target: "sub-libp2p", "Peerset receiver stream has errored: {:?}", err);
 					break
@@ -970,7 +970,7 @@ where
 		for (peer_id, peer_state) in self.peers.iter_mut() {
 			match mem::replace(peer_state, PeerState::Poisoned) {
 				PeerState::PendingRequest { mut timer } => {
-					if let Ok(Async::NotReady) = timer.poll() {
+					if let Poll::Pending = timer.poll() {
 						*peer_state = PeerState::PendingRequest { timer };
 						continue;
 					}
@@ -981,7 +981,7 @@ where
 				}
 
 				PeerState::DisabledPendingEnable { mut timer, connected_point, open } => {
-					if let Ok(Async::NotReady) = timer.poll() {
+					if let Poll::Pending = timer.poll() {
 						*peer_state = PeerState::DisabledPendingEnable { timer, connected_point, open };
 						continue;
 					}
@@ -1002,6 +1002,6 @@ where
 			return Async::Ready(self.events.remove(0))
 		}
 
-		Async::NotReady
+		Poll::Pending
 	}
 }

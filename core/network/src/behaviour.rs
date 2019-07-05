@@ -213,6 +213,6 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Behaviour<B, S, H> {
 			return Async::Ready(NetworkBehaviourAction::GenerateEvent(self.events.remove(0)))
 		}
 
-		Async::NotReady
+		Poll::Pending
 	}
 }

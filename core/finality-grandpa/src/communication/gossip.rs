@@ -91,7 +91,7 @@ use crate::ed25519::Public as AuthorityId;
 use substrate_telemetry::{telemetry, CONSENSUS_DEBUG};
 use log::{trace, debug, warn};
 use futures::prelude::*;
-use futures::sync::mpsc;
+use futures::channel::mpsc;
 
 use crate::{environment, CatchUp, CompactCommit, SignedMessage};
 use super::{cost, benefit, Round, SetId};
@@ -1221,7 +1221,7 @@ impl<B: BlockT, N: super::Network<B>> Future for ReportingTask<B, N> {
 				Ok(Async::Ready(None)) => return Ok(Async::Ready(())),
 				Ok(Async::Ready(Some(PeerReport { who, cost_benefit }))) =>
 					self.net.report(who, cost_benefit),
-				Ok(Async::NotReady) => return Ok(Async::NotReady),
+				Poll::Pending => return Poll::Pending,
 			}
 		}
 	}

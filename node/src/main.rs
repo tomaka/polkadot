@@ -19,7 +19,7 @@
 #![warn(missing_docs)]
 
 use cli::VersionInfo;
-use futures::sync::oneshot;
+use futures::channel::oneshot;
 use futures::{future, Future};
 
 use std::cell::RefCell;

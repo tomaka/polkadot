@@ -18,10 +18,10 @@
 
 use super::{gossip::{NeighborPacket, GossipMessage}, Network};
 use futures::prelude::*;
-use futures::sync::mpsc;
+use futures::channel::mpsc;
 use runtime_primitives::traits::{NumberFor, Block as BlockT};
 use network::PeerId;
-use tokio_timer::Delay;
+use futures_timer::Delay;
 use log::warn;
 use parity_codec::Encode;
 
@@ -42,7 +42,7 @@ pub(super) type NeighborPacketSender<B> = mpsc::UnboundedSender<(Vec<PeerId>, Ne
 /// It may rebroadcast the last neighbor packet periodically when no
 /// progress is made.
 pub(super) fn neighbor_packet_worker<B, N>(net: N) -> (
-	impl Future<Item = (), Error = ()> + Send + 'static,
+	impl Future<Output = Result<(), ()>> + Send + 'static,
 	NeighborPacketSender<B>,
 ) where
 	B: BlockT,
@@ -64,7 +64,7 @@ pub(super) fn neighbor_packet_worker<B, N>(net: N) -> (
 					delay.reset(rebroadcast_instant());
 					last = Some((to, packet));
 				}
-				Async::NotReady => break,
+				Poll::Pending => break,
 			}
 		}
 
@@ -84,7 +84,7 @@ pub(super) fn neighbor_packet_worker<B, N>(net: N) -> (
 						net.send_message(to.clone(), GossipMessage::<B>::from(packet.clone()).encode());
 					}
 				}
-				Ok(Async::NotReady) => return Ok(Async::NotReady),
+				Poll::Pending => return Poll::Pending,
 			}
 		}
 	});

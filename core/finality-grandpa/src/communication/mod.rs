@@ -32,7 +32,7 @@ use std::sync::Arc;
 use grandpa::{voter, voter_set::VoterSet};
 use grandpa::Message::{Prevote, Precommit, PrimaryPropose};
 use futures::prelude::*;
-use futures::sync::{oneshot, mpsc};
+use futures::channel::{oneshot, mpsc};
 use log::{debug, trace};
 use tokio_executor::Executor;
 use parity_codec::{Encode, Decode};
@@ -220,7 +220,7 @@ impl Stream for NetworkStream {
 				self.inner = Some(inner);
 				poll_result
 			},
-			Ok(futures::Async::NotReady) => Ok(futures::Async::NotReady),
+			Ok(futures::Poll::Pending) => Ok(futures::Poll::Pending),
 			Err(_) => Err(())
 		}
 	}
@@ -245,7 +245,7 @@ impl<B: BlockT, N: Network<B>> NetworkBridge<B, N> {
 		on_exit: impl Future<Item=(),Error=()> + Clone + Send + 'static,
 	) -> (
 		Self,
-		impl futures::Future<Item = (), Error = ()> + Send + 'static,
+		impl futures::Future<Output = Result<(), ()>> + Send + 'static,
 	) {
 
 		let (validator, report_stream) = GossipValidator::new(config, set_state.clone());

@@ -18,7 +18,7 @@
 use std::sync::Arc;
 
 use jsonrpc_pubsub::{Session, PubSubMetadata};
-use crate::rpc::futures::sync::mpsc;
+use crate::rpc::futures::channel::mpsc;
 
 /// RPC Metadata.
 ///

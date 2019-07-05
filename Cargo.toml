@@ -11,7 +11,7 @@ edition = "2018"
 
 [dependencies]
 cli = { package = "node-cli", path = "node/cli" }
-futures = "0.1"
+futures-preview = "0.3.0-alpha.17"
 ctrlc = { version = "3.0", features = ["termination"] }
 
 [build-dependencies]

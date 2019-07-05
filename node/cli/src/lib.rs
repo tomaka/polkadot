@@ -206,7 +206,7 @@ fn run_until_exit<T, C, E>(
 	e: E,
 ) -> error::Result<()>
 	where
-		T: Deref<Target=substrate_service::Service<C>> + Future<Item = (), Error = ()> + Send + 'static,
+		T: Deref<Target=substrate_service::Service<C>> + Future<Output = Result<(), ()>> + Send + 'static,
 		C: substrate_service::Components,
 		E: IntoExit,
 {

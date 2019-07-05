@@ -19,7 +19,7 @@
 use ansi_term::Colour;
 use std::fmt;
 use std::time;
-use futures::{Future, Stream};
+use futures::prelude::*;
 use service::{Service, Components};
 use tokio::runtime::TaskExecutor;
 use network::SyncState;
@@ -38,7 +38,7 @@ pub fn start<C>(service: &Service<C>, exit: ::exit_future::Exit, handle: TaskExe
 }
 
 /// Creates an informant in the form of a `Future` that must be polled regularly.
-pub fn build<C>(service: &Service<C>) -> impl Future<Item = (), Error = ()>
+pub fn build<C>(service: &Service<C>) -> impl Future<Output = ()>
 where C: Components {
 	let client = service.client();
 	let mut last_number = None;
