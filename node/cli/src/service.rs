@@ -18,6 +18,7 @@
 
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 
+use std::cell::RefCell;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -32,7 +33,7 @@ use node_runtime::{GenesisConfig, RuntimeApi};
 use substrate_service::{
 	FactoryFullConfiguration, LightComponents, FullComponents, FullBackend,
 	FullClient, LightClient, LightBackend, FullExecutor, LightExecutor,
-	error::{Error as ServiceError},
+	config::Configuration, ServiceBuilder, error::{Error as ServiceError},
 };
 use transaction_pool::{self, txpool::{Pool as TransactionPool}};
 use inherents::InherentDataProviders;
@@ -207,6 +208,153 @@ construct_service_factory! {
 			Ok(Some(Arc::new(GrandpaFinalityProofProvider::new(client.clone(), client)) as _))
 		}},
 	}
+}
+
+pub fn new_full<C: Send + Default + 'static>(config: Configuration<C, GenesisConfig>)
+-> Result<impl Future<Item = (), Error = ()> + Send, ServiceError> {
+	let grandpa_import_setup = RefCell::new(None);
+	let inherent_data_providers = InherentDataProviders::new();
+
+	let service = ServiceBuilder::new_full::<Block, RuntimeApi, node_executor::Executor>(config)?
+		.with_select_chain(|_config, client| Ok(LongestChain::new(client.backend().clone())))?
+		.with_import_queue(|_config, client, select_chain| {
+			let slot_duration = SlotDuration::get_or_compute(&*client)?;
+			let (block_import, link_half) =
+				grandpa::block_import::<_, _, _, RuntimeApi, _, _>(
+					client.clone(), client.clone(), select_chain.expect("We configure the select_chain above; qed")
+				)?;
+			let justification_import = block_import.clone();
+
+			*grandpa_import_setup.borrow_mut() = Some((block_import.clone(), link_half));
+
+			import_queue::<_, _, AuraPair>(
+				slot_duration,
+				Box::new(block_import),
+				Some(Box::new(justification_import)),
+				None,
+				client,
+				inherent_data_providers.clone(),
+			).map_err(Into::into)
+		})?
+		.with_network_protocol(|_| Ok(NodeProtocol::new()))?
+		.with_finality_proof_provider(|client|
+			Ok(Arc::new(GrandpaFinalityProofProvider::new(client.clone(), client)) as _)
+		)?
+		.with_transaction_pool(|config, client|
+			Ok(TransactionPool::new(config, transaction_pool::ChainApi::new(client)))
+		)?
+		.build()?;
+
+	let (block_import, link_half) = grandpa_import_setup.borrow_mut().take()
+		.expect("Link Half and Block Import are present for Full Services or setup failed before. qed");
+
+	if let Some(aura_key) = service.authority_key::<AuraPair>() {
+		info!("Using aura key {}", aura_key.public());
+
+		let proposer = Arc::new(substrate_basic_authorship::ProposerFactory {
+			client: service.client(),
+			transaction_pool: service.transaction_pool(),
+		});
+
+		let client = service.client();
+		let select_chain = service.select_chain()
+			.ok_or(ServiceError::SelectChainRequired)?;
+
+		let aura = start_aura(
+			SlotDuration::get_or_compute(&*client)?,
+			Arc::new(aura_key),
+			client,
+			select_chain,
+			block_import,
+			proposer,
+			service.network(),
+			inherent_data_providers.clone(),
+			service.config().force_authoring,
+		)?;
+		let select = aura.select(service.on_exit()).then(|_| Ok(()));
+		service.spawn_task(Box::new(select));
+	}
+
+	let grandpa_key = if service.config().disable_grandpa {
+		None
+	} else {
+		service.authority_key::<grandpa_primitives::AuthorityPair>()
+	};
+
+	let config = grandpa::Config {
+		local_key: grandpa_key.map(Arc::new),
+		// FIXME #1578 make this available through chainspec
+		gossip_duration: Duration::from_millis(333),
+		justification_period: 4096,
+		name: Some(service.config().name.clone())
+	};
+
+	match config.local_key {
+		None if !service.config().grandpa_voter => {
+			service.spawn_task(Box::new(grandpa::run_grandpa_observer(
+				config,
+				link_half,
+				service.network(),
+				service.on_exit(),
+			)?));
+		},
+		// Either config.local_key is set, or user forced voter service via `--grandpa-voter` flag.
+		_ => {
+			let telemetry_on_connect = TelemetryOnConnect {
+				telemetry_connection_sinks: service.telemetry_on_connect_stream(),
+			};
+			let grandpa_config = grandpa::GrandpaParams {
+				config: config,
+				link: link_half,
+				network: service.network(),
+				inherent_data_providers: inherent_data_providers.clone(),
+				on_exit: service.on_exit(),
+				telemetry_on_connect: Some(telemetry_on_connect),
+			};
+			service.spawn_task(Box::new(grandpa::run_grandpa_voter(grandpa_config)?));
+		},
+	}
+
+	Ok(service)
+}
+
+pub fn new_light<C: Send + Default + 'static>(config: Configuration<C, GenesisConfig>)
+-> Result<impl Future<Item = (), Error = ()> + Send, ServiceError> {
+	let inherent_data_providers = InherentDataProviders::new();
+
+	let service = ServiceBuilder::new_light::<Block, RuntimeApi, node_executor::Executor>(config)?
+		.with_select_chain(|_config, client| Ok(LongestChain::new(client.backend().clone())))?
+		.with_import_queue_and_fprb(|_config, client, _select_chain| {
+			#[allow(deprecated)]
+			let fetch_checker = client.backend().blockchain().fetcher()
+				.upgrade()
+				.map(|fetcher| fetcher.checker().clone())
+				.ok_or_else(|| "Trying to start light import queue without active fetch checker")?;
+			let block_import = grandpa::light_block_import::<_, _, _, RuntimeApi, _>(
+				client.clone(), Arc::new(fetch_checker), client.clone()
+			)?;
+			let finality_proof_import = block_import.clone();
+			let finality_proof_request_builder = finality_proof_import.create_finality_proof_request_builder();
+
+			import_queue::<_, _, AuraPair>(
+				SlotDuration::get_or_compute(&*client)?,
+				Box::new(block_import),
+				None,
+				Some(Box::new(finality_proof_import)),
+				client,
+				inherent_data_providers.clone(),
+			).map(|q| (q, finality_proof_request_builder)).map_err(Into::into)
+		})?
+		.with_network_protocol(|_| Ok(NodeProtocol::new()))?
+		.with_finality_proof_provider(|client|
+			Ok(Arc::new(GrandpaFinalityProofProvider::new(client.clone(), client)) as _)
+		)?
+		.with_transaction_pool(|config, client|
+			Ok(TransactionPool::new(config, transaction_pool::ChainApi::new(client)))
+		)?
+		.build()?;
+
+	Ok(service)
 }
 
 
