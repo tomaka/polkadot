@@ -186,7 +186,7 @@ pub trait MaintainTransactionPool<C: Components> {
 	) -> error::Result<()>;
 }
 
-fn maintain_transaction_pool<Api, Backend, Block, Executor, PoolApi>(
+pub(crate) fn maintain_transaction_pool<Api, Backend, Block, Executor, PoolApi>(
 	id: &BlockId<Block>,
 	client: &Client<Backend, Executor, Block, Api>,
 	transaction_pool: &TransactionPool<PoolApi>,

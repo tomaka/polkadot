@@ -80,7 +80,7 @@ construct_service_factory! {
 				FullComponents::<Factory>::new(config) },
 		AuthoritySetup = {
 			|mut service: Self::FullService| {
-				let (block_import, link_half) = service.config.custom.grandpa_import_setup.take()
+				let (block_import, link_half) = service.config_mut().custom.grandpa_import_setup.take()
 					.expect("Link Half and Block Import are present for Full Services or setup failed before. qed");
 
 				if let Some(aura_key) = service.authority_key::<AuraPair>() {
@@ -103,14 +103,14 @@ construct_service_factory! {
 						block_import,
 						proposer,
 						service.network(),
-						service.config.custom.inherent_data_providers.clone(),
-						service.config.force_authoring,
+						service.config().custom.inherent_data_providers.clone(),
+						service.config().force_authoring,
 					)?;
 					let select = aura.select(service.on_exit()).then(|_| Ok(()));
 					service.spawn_task(Box::new(select));
 				}
 
-				let grandpa_key = if service.config.disable_grandpa {
+				let grandpa_key = if service.config().disable_grandpa {
 					None
 				} else {
 					service.authority_key::<grandpa_primitives::AuthorityPair>()
@@ -121,11 +121,11 @@ construct_service_factory! {
 					// FIXME #1578 make this available through chainspec
 					gossip_duration: Duration::from_millis(333),
 					justification_period: 4096,
-					name: Some(service.config.name.clone())
+					name: Some(service.config().name.clone())
 				};
 
 				match config.local_key {
-					None if !service.config.grandpa_voter => {
+					None if !service.config().grandpa_voter => {
 						service.spawn_task(Box::new(grandpa::run_grandpa_observer(
 							config,
 							link_half,
@@ -142,7 +142,7 @@ construct_service_factory! {
 							config: config,
 							link: link_half,
 							network: service.network(),
-							inherent_data_providers: service.config.custom.inherent_data_providers.clone(),
+							inherent_data_providers: service.config().custom.inherent_data_providers.clone(),
 							on_exit: service.on_exit(),
 							telemetry_on_connect: Some(telemetry_on_connect),
 						};
