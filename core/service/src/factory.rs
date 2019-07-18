@@ -16,7 +16,7 @@
 
 use crate::{AuthorityKeyProvider, NetworkStatus, NetworkState, error::Error, DEFAULT_PROTOCOL_ID};
 use crate::{SpawnTaskHandle, start_rpc_servers, build_network_future, components::maintain_transaction_pool};
-use crate::{TelemetryOnConnectNotifications, RpcSession, TransactionPoolAdapter};
+use crate::{AbstractService, TelemetryOnConnectNotifications, RpcSession, TransactionPoolAdapter};
 use crate::config::{Configuration, Roles};
 use client::{BlockchainEvents, Client, runtime_api};
 use consensus_common::import_queue::ImportQueue;
@@ -774,6 +774,84 @@ pub struct Service<TCfg, TBl, TCl, TSc, TNetStatus, TNet, TTxPool, TOc> {
 	pub(crate) _telemetry_on_connect_sinks: Arc<Mutex<Vec<mpsc::UnboundedSender<()>>>>,
 	pub(crate) _offchain_workers: Option<Arc<TOc>>,
 	pub(crate) marker: PhantomData<TBl>,
+}
+
+impl<TCfg, TBl, TBackend, TExec, TRtApi, TSc, TNet, TExPoolApi, TOc> AbstractService for
+	Service<TCfg, TBl, Client<TBackend, TExec, TBl, TRtApi>, TSc, NetworkStatus<TBl>, TNet, TransactionPool<TExPoolApi>, TOc>
+where TCfg: 'static + Send,
+	TBl: BlockT<Hash = H256>,
+	TBackend: 'static + client::backend::Backend<TBl, Blake2Hasher>,
+	TExec: 'static + client::CallExecutor<TBl, Blake2Hasher> + Send + Sync + Clone,
+	TRtApi: 'static + Send + Sync,
+	TSc: 'static + Clone + Send,
+	TNet: 'static + Send + Sync,
+	TExPoolApi: 'static + ChainApi,
+	TOc: 'static + Send + Sync,
+{
+	type Block = TBl;
+	type Backend = TBackend;
+	type Executor = TExec;
+	type RuntimeApi = TRtApi;
+	type Config = TCfg;
+	type SelectChain = TSc;
+	type TransactionPoolApi = TExPoolApi;
+	type NetworkService = TNet;
+
+	fn telemetry_on_connect_stream(&self) -> TelemetryOnConnectNotifications {
+		self.telemetry_on_connect_stream()
+	}
+
+	fn config(&self) -> &Self::Config {
+		self.config()
+	}
+
+	fn config_mut(&mut self) -> &mut Self::Config {
+		self.config_mut()
+	}
+
+	fn authority_key<TPair: Pair>(&self) -> Option<TPair> {
+		self.authority_key()
+	}
+
+	fn telemetry(&self) -> Option<tel::Telemetry> {
+		self.telemetry()
+	}
+
+	fn spawn_task(&self, task: impl Future<Item = (), Error = ()> + Send + 'static) {
+		self.spawn_task(task)
+	}
+
+	fn spawn_task_handle(&self) -> SpawnTaskHandle {
+		self.spawn_task_handle()
+	}
+
+	fn rpc_query(&self, mem: &RpcSession, request: &str) -> Box<dyn Future<Item = Option<String>, Error = ()> + Send> {
+		Box::new(self.rpc_query(mem, request))
+	}
+
+	fn client(&self) -> Arc<Client<Self::Backend, Self::Executor, Self::Block, Self::RuntimeApi>> {
+		self.client()
+	}
+
+	fn select_chain(&self) -> Option<Self::SelectChain> {
+		self.select_chain()
+	}
+
+	fn network(&self) -> Arc<Self::NetworkService> {
+		self.network()
+	}
+
+	fn network_status(&self) -> mpsc::UnboundedReceiver<(NetworkStatus<Self::Block>, NetworkState)> {
+		self.network_status()
+	}
+
+	fn transaction_pool(&self) -> Arc<TransactionPool<Self::TransactionPoolApi>> {
+		self.transaction_pool()
+	}
+
+	fn on_exit(&self) -> ::exit_future::Exit {
+		self.on_exit()
+	}
 }
 
 impl<TCfg, TBl, TCl, TSc, TNetStatus, TNet, TTxPool, TOc>

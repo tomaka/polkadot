@@ -21,7 +21,7 @@ use std::fmt;
 use std::time;
 use futures::{Future, Stream};
 use futures03::{StreamExt as _, TryStreamExt as _};
-use service::{Service, Components};
+use service::AbstractService;
 use tokio::runtime::TaskExecutor;
 use network::SyncState;
 use client::{backend::Backend, BlockchainEvents};
@@ -32,15 +32,12 @@ use runtime_primitives::traits::{Header, SaturatedConversion};
 
 /// Spawn informant on the event loop
 #[deprecated(note = "Please use informant::build instead, and then create the task manually")]
-pub fn start<C>(service: &Service<C>, exit: ::exit_future::Exit, handle: TaskExecutor) where
-	C: Components,
-{
+pub fn start(service: &impl AbstractService, exit: ::exit_future::Exit, handle: TaskExecutor) {
 	handle.spawn(exit.until(build(service)).map(|_| ()));
 }
 
 /// Creates an informant in the form of a `Future` that must be polled regularly.
-pub fn build<C>(service: &Service<C>) -> impl Future<Item = (), Error = ()>
-where C: Components {
+pub fn build(service: &impl AbstractService) -> impl Future<Item = (), Error = ()> {
 	let client = service.client();
 	let mut last_number = None;
 	let mut last_update = time::Instant::now();

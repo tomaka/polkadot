@@ -34,14 +34,14 @@ use std::time::Duration;
 use futures::sync::mpsc;
 use parking_lot::Mutex;
 
-use client::{BlockchainEvents, backend::Backend, runtime_api::BlockT};
+use client::{BlockchainEvents, Client, backend::Backend, runtime_api::BlockT};
 use futures::prelude::*;
 use futures03::stream::{StreamExt as _, TryStreamExt as _};
 use keystore::Store as Keystore;
 use network::NetworkState;
 use log::{info, warn, debug, error};
 use parity_codec::{Encode, Decode};
-use primitives::{Pair, ed25519, crypto};
+use primitives::{Pair, ed25519, H256, crypto, Blake2Hasher};
 use runtime_primitives::generic::BlockId;
 use runtime_primitives::traits::{Header, NumberFor, SaturatedConversion};
 use substrate_executor::NativeExecutor;
@@ -137,11 +137,6 @@ pub struct TelemetryOnConnect {
 }
 
 impl<Components: components::Components> Service<Components> {
-	/// Get event stream for telemetry connection established events.
-	pub fn telemetry_on_connect_stream(&self) -> TelemetryOnConnectNotifications {
-		self.inner.telemetry_on_connect_stream()
-	}
-
 	/// Creates a new service.
 	pub fn new(
 		mut config: FactoryFullConfiguration<Components::Factory>,
@@ -483,36 +478,38 @@ impl<Components: components::Components> Service<Components> {
 			}
 		})
 	}
+}
+
+pub trait AbstractService: 'static + Future + Executor<Box<dyn Future<Item = (), Error = ()> + Send>> + Send {
+	type Block: BlockT<Hash = H256>;
+	type Backend: 'static + client::backend::Backend<Self::Block, Blake2Hasher>;
+	type Executor: 'static + client::CallExecutor<Self::Block, Blake2Hasher> + Send + Sync + Clone;
+	type RuntimeApi: Send + Sync;
+	type Config;
+	type SelectChain;
+	type TransactionPoolApi: ChainApi;
+	type NetworkService;
+
+	/// Get event stream for telemetry connection established events.
+	fn telemetry_on_connect_stream(&self) -> TelemetryOnConnectNotifications;
 
 	/// Returns the configuration passed on construction.
-	pub fn config(&self) -> &FactoryFullConfiguration<Components::Factory> {
-		self.inner.config()
-	}
+	fn config(&self) -> &Self::Config;
 
 	/// Returns the configuration passed on construction.
-	pub fn config_mut(&mut self) -> &mut FactoryFullConfiguration<Components::Factory> {
-		self.inner.config_mut()
-	}
+	fn config_mut(&mut self) -> &mut Self::Config;
 
 	/// give the authority key, if we are an authority and have a key
-	pub fn authority_key<TPair: Pair>(&self) -> Option<TPair> {
-		self.inner.authority_key()
-	}
+	fn authority_key<TPair: Pair>(&self) -> Option<TPair>;
 
 	/// return a shared instance of Telemetry (if enabled)
-	pub fn telemetry(&self) -> Option<tel::Telemetry> {
-		self.inner.telemetry()
-	}
+	fn telemetry(&self) -> Option<tel::Telemetry>;
 
 	/// Spawns a task in the background that runs the future passed as parameter.
-	pub fn spawn_task(&self, task: impl Future<Item = (), Error = ()> + Send + 'static) {
-		self.inner.spawn_task(task)
-	}
+	fn spawn_task(&self, task: impl Future<Item = (), Error = ()> + Send + 'static);
 
 	/// Returns a handle for spawning tasks.
-	pub fn spawn_task_handle(&self) -> SpawnTaskHandle {
-		self.inner.spawn_task_handle()
-	}
+	fn spawn_task_handle(&self) -> SpawnTaskHandle;
 
 	/// Starts an RPC query.
 	///
@@ -523,38 +520,91 @@ impl<Components: components::Components> Service<Components> {
 	///
 	/// If the request subscribes you to events, the `Sender` in the `RpcSession` object is used to
 	/// send back spontaneous events.
-	pub fn rpc_query(&self, mem: &RpcSession, request: &str)
-	-> impl Future<Item = Option<String>, Error = ()> {
-		self.inner.rpc_query(mem, request)
-	}
+	fn rpc_query(&self, mem: &RpcSession, request: &str) -> Box<dyn Future<Item = Option<String>, Error = ()> + Send>;
 
 	/// Get shared client instance.
-	pub fn client(&self) -> Arc<ComponentClient<Components>> {
+	fn client(&self) -> Arc<Client<Self::Backend, Self::Executor, Self::Block, Self::RuntimeApi>>;
+
+	/// Get clone of select chain.
+	fn select_chain(&self) -> Option<Self::SelectChain>;
+
+	/// Get shared network instance.
+	fn network(&self) -> Arc<Self::NetworkService>;
+
+	/// Returns a receiver that periodically receives a status of the network.
+	fn network_status(&self) -> mpsc::UnboundedReceiver<(NetworkStatus<Self::Block>, NetworkState)>;
+
+	/// Get shared transaction pool instance.
+	fn transaction_pool(&self) -> Arc<TransactionPool<Self::TransactionPoolApi>>;
+
+	/// Get a handle to a future that will resolve on exit.
+	fn on_exit(&self) -> ::exit_future::Exit;
+}
+
+impl<Components: components::Components> AbstractService for Service<Components>
+where FactoryFullConfiguration<Components::Factory>: Send {
+	type Block = ComponentBlock<Components>;
+	type Backend = <Components as components::Components>::Backend;
+	type Executor = <Components as components::Components>::Executor;
+	type RuntimeApi = <Components as components::Components>::RuntimeApi;
+	type Config = FactoryFullConfiguration<Components::Factory>;
+	type SelectChain = <Components as components::Components>::SelectChain;
+	type TransactionPoolApi = Components::TransactionPoolApi;
+	type NetworkService = components::NetworkService<Components>;
+
+	fn telemetry_on_connect_stream(&self) -> TelemetryOnConnectNotifications {
+		self.inner.telemetry_on_connect_stream()
+	}
+
+	fn config(&self) -> &Self::Config {
+		self.inner.config()
+	}
+
+	fn config_mut(&mut self) -> &mut Self::Config {
+		self.inner.config_mut()
+	}
+
+	fn authority_key<TPair: Pair>(&self) -> Option<TPair> {
+		self.inner.authority_key()
+	}
+
+	fn telemetry(&self) -> Option<tel::Telemetry> {
+		self.inner.telemetry()
+	}
+
+	fn spawn_task(&self, task: impl Future<Item = (), Error = ()> + Send + 'static) {
+		self.inner.spawn_task(task)
+	}
+
+	fn spawn_task_handle(&self) -> SpawnTaskHandle {
+		self.inner.spawn_task_handle()
+	}
+
+	fn rpc_query(&self, mem: &RpcSession, request: &str) -> Box<dyn Future<Item = Option<String>, Error = ()> + Send> {
+		Box::new(self.inner.rpc_query(mem, request))
+	}
+
+	fn client(&self) -> Arc<Client<Self::Backend, Self::Executor, Self::Block, Self::RuntimeApi>> {
 		self.inner.client()
 	}
 
-	/// Get clone of select chain.
-	pub fn select_chain(&self) -> Option<<Components as components::Components>::SelectChain> {
+	fn select_chain(&self) -> Option<Self::SelectChain> {
 		self.inner.select_chain()
 	}
 
-	/// Get shared network instance.
-	pub fn network(&self) -> Arc<components::NetworkService<Components>> {
+	fn network(&self) -> Arc<Self::NetworkService> {
 		self.inner.network()
 	}
 
-	/// Returns a receiver that periodically receives a status of the network.
-	pub fn network_status(&self) -> mpsc::UnboundedReceiver<(NetworkStatus<ComponentBlock<Components>>, NetworkState)> {
+	fn network_status(&self) -> mpsc::UnboundedReceiver<(NetworkStatus<Self::Block>, NetworkState)> {
 		self.inner.network_status()
 	}
 
-	/// Get shared transaction pool instance.
-	pub fn transaction_pool(&self) -> Arc<TransactionPool<Components::TransactionPoolApi>> {
+	fn transaction_pool(&self) -> Arc<TransactionPool<Self::TransactionPoolApi>> {
 		self.inner.transaction_pool()
 	}
 
-	/// Get a handle to a future that will resolve on exit.
-	pub fn on_exit(&self) -> ::exit_future::Exit {
+	fn on_exit(&self) -> ::exit_future::Exit {
 		self.inner.on_exit()
 	}
 }
