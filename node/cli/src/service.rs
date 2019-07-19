@@ -211,7 +211,7 @@ construct_service_factory! {
 }
 
 pub fn new_full<C: Send + Default + 'static>(config: Configuration<C, GenesisConfig>)
--> Result<impl Future<Item = (), Error = ()> + Send, ServiceError> {
+-> Result<impl AbstractService, ServiceError> {
 	let grandpa_import_setup = RefCell::new(None);
 	let inherent_data_providers = InherentDataProviders::new();
 
@@ -319,7 +319,7 @@ pub fn new_full<C: Send + Default + 'static>(config: Configuration<C, GenesisCon
 }
 
 pub fn new_light<C: Send + Default + 'static>(config: Configuration<C, GenesisConfig>)
--> Result<impl Future<Item = (), Error = ()> + Send, ServiceError> {
+-> Result<impl AbstractService, ServiceError> {
 	let inherent_data_providers = InherentDataProviders::new();
 
 	let service = ServiceBuilder::new_light::<Block, RuntimeApi, node_executor::Executor>(config)?

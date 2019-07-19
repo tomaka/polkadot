@@ -159,12 +159,12 @@ pub fn run<I, T, E>(args: I, exit: E, version: cli::VersionInfo) -> error::Resul
 			match config.roles {
 				ServiceRoles::LIGHT => run_until_exit(
 					runtime,
-					service::Factory::new_light(config).map_err(|e| format!("{:?}", e))?,
+					service::new_light(config).map_err(|e| format!("{:?}", e))?,
 					exit
 				),
 				_ => run_until_exit(
 					runtime,
-					service::Factory::new_full(config).map_err(|e| format!("{:?}", e))?,
+					service::new_full(config).map_err(|e| format!("{:?}", e))?,
 					exit
 				),
 			}.map_err(|e| format!("{:?}", e))
@@ -200,14 +200,13 @@ pub fn run<I, T, E>(args: I, exit: E, version: cli::VersionInfo) -> error::Resul
 	}
 }
 
-fn run_until_exit<T, C, E>(
+fn run_until_exit<T, E>(
 	mut runtime: Runtime,
 	service: T,
 	e: E,
 ) -> error::Result<()>
 	where
-		T: Deref<Target=substrate_service::Service<C>> + AbstractService,
-		C: substrate_service::Components,
+		T: AbstractService,
 		E: IntoExit,
 {
 	let (exit_send, exit) = exit_future::signal();
