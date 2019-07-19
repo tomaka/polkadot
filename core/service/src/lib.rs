@@ -65,7 +65,7 @@ pub use components::{ServiceFactory, FullBackend, FullExecutor, LightBackend,
 };
 use components::{StartRPC, MaintainTransactionPool, OffchainWorker};
 #[doc(hidden)]
-pub use std::{ops::Deref, result::Result, sync::Arc};
+pub use std::{ops::Deref, ops::DerefMut, result::Result, sync::Arc};
 #[doc(hidden)]
 pub use network::{FinalityProofProvider, OnDemand, config::BoxFinalityProofRequestBuilder};
 #[doc(hidden)]
@@ -480,7 +480,7 @@ impl<Components: components::Components> Service<Components> {
 	}
 }
 
-pub trait AbstractService: 'static + Future + Executor<Box<dyn Future<Item = (), Error = ()> + Send>> + Send {
+pub trait AbstractService: 'static + Future<Item = (), Error = ()> + Executor<Box<dyn Future<Item = (), Error = ()> + Send>> + Send {
 	type Block: BlockT<Hash = H256>;
 	type Backend: 'static + client::backend::Backend<Self::Block, Blake2Hasher>;
 	type Executor: 'static + client::CallExecutor<Self::Block, Blake2Hasher> + Send + Sync + Clone;
@@ -626,6 +626,74 @@ impl<Components> Executor<Box<dyn Future<Item = (), Error = ()> + Send>>
 		future: Box<dyn Future<Item = (), Error = ()> + Send>
 	) -> Result<(), futures::future::ExecuteError<Box<dyn Future<Item = (), Error = ()> + Send>>> {
 		self.inner.execute(future)
+	}
+}
+
+impl<T> AbstractService for T
+where T: 'static + Deref + DerefMut + Future<Item = (), Error = ()> + Send + Executor<Box<dyn Future<Item = (), Error = ()> + Send>>, T::Target: AbstractService {
+	type Block = <<T as Deref>::Target as AbstractService>::Block;
+	type Backend = <<T as Deref>::Target as AbstractService>::Backend;
+	type Executor = <<T as Deref>::Target as AbstractService>::Executor;
+	type RuntimeApi = <<T as Deref>::Target as AbstractService>::RuntimeApi;
+	type Config = <<T as Deref>::Target as AbstractService>::Config;
+	type SelectChain = <<T as Deref>::Target as AbstractService>::SelectChain;
+	type TransactionPoolApi = <<T as Deref>::Target as AbstractService>::TransactionPoolApi;
+	type NetworkService = <<T as Deref>::Target as AbstractService>::NetworkService;
+
+	fn telemetry_on_connect_stream(&self) -> TelemetryOnConnectNotifications {
+		(**self).telemetry_on_connect_stream()
+	}
+
+	fn config(&self) -> &Self::Config {
+		(**self).config()
+	}
+
+	fn config_mut(&mut self) -> &mut Self::Config {
+		(&mut **self).config_mut()
+	}
+
+	fn authority_key<TPair: Pair>(&self) -> Option<TPair> {
+		(**self).authority_key()
+	}
+
+	fn telemetry(&self) -> Option<tel::Telemetry> {
+		(**self).telemetry()
+	}
+
+	fn spawn_task(&self, task: impl Future<Item = (), Error = ()> + Send + 'static) {
+		(**self).spawn_task(task)
+	}
+
+	fn spawn_task_handle(&self) -> SpawnTaskHandle {
+		(**self).spawn_task_handle()
+	}
+
+	fn rpc_query(&self, mem: &RpcSession, request: &str) -> Box<dyn Future<Item = Option<String>, Error = ()> + Send> {
+		(**self).rpc_query(mem, request)
+	}
+
+	fn client(&self) -> Arc<Client<Self::Backend, Self::Executor, Self::Block, Self::RuntimeApi>> {
+		(**self).client()
+	}
+
+	fn select_chain(&self) -> Option<Self::SelectChain> {
+		(**self).select_chain()
+	}
+
+	fn network(&self) -> Arc<Self::NetworkService> {
+		(**self).network()
+	}
+
+	fn network_status(&self) -> mpsc::UnboundedReceiver<(NetworkStatus<Self::Block>, NetworkState)> {
+		(**self).network_status()
+	}
+
+	fn transaction_pool(&self) -> Arc<TransactionPool<Self::TransactionPoolApi>> {
+		(**self).transaction_pool()
+	}
+
+	fn on_exit(&self) -> ::exit_future::Exit {
+		(**self).on_exit()
 	}
 }
 
