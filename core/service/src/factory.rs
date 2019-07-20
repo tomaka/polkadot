@@ -532,6 +532,7 @@ ServiceBuilder<
 			let wclient = Arc::downgrade(&self.client);
 			let offchain = offchain_workers.as_ref().map(Arc::downgrade);
 			let to_spawn_tx_ = to_spawn_tx.clone();
+			let network_state = network.clone();
 
 			let events = self.client.import_notification_stream()
 				.map(|v| Ok::<_, ()>(v)).compat()
@@ -547,7 +548,7 @@ ServiceBuilder<
 					}
 
 					if let (Some(txpool), Some(oc)) = (txpool.upgrade(), offchain.as_ref().and_then(|o| o.upgrade())) {
-						let future = Box::new(oc.on_block_imported(&number, &txpool)) as Box<_>;
+						let future = Box::new(oc.on_block_imported(&number, &txpool, network_state.clone())) as Box<_>;
 						let _ = to_spawn_tx_.unbounded_send(future);
 					}
 
