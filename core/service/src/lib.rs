@@ -1074,6 +1074,7 @@ impl offchain::AuthorityKeyProvider for AuthorityKeyProvider {
 /// 	}
 /// }
 /// ```
+#[deprecated(note = "Please use the ServiceBuilder instead")]
 #[macro_export]
 macro_rules! construct_service_factory {
 	(

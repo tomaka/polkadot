@@ -280,6 +280,7 @@ impl<C: Components, T> ServiceTrait<C> for T where
 pub type TaskExecutor = Arc<dyn Executor<Box<dyn Future<Item = (), Error = ()> + Send>> + Send + Sync>;
 
 /// A collection of types and methods to build a service on top of the substrate service.
+#[deprecated(note = "Please use the ServiceBuilder instead")]
 pub trait ServiceFactory: 'static + Sized {
 	/// Block type.
 	type Block: BlockT<Hash=H256>;
@@ -371,6 +372,7 @@ pub trait ServiceFactory: 'static + Sized {
 }
 
 /// A collection of types and function to generalize over full / light client type.
+#[deprecated(note = "Please use the ServiceBuilder instead")]
 pub trait Components: Sized + 'static {
 	/// Associated service factory.
 	type Factory: ServiceFactory;
@@ -430,6 +432,7 @@ pub trait Components: Sized + 'static {
 }
 
 /// A struct that implement `Components` for the full client.
+#[deprecated(note = "Please use the ServiceBuilder instead")]
 pub struct FullComponents<Factory: ServiceFactory> {
 	service: Service<FullComponents<Factory>>,
 }
@@ -548,6 +551,7 @@ impl<Factory: ServiceFactory> Components for FullComponents<Factory> {
 }
 
 /// A struct that implement `Components` for the light client.
+#[deprecated(note = "Please use the ServiceBuilder instead")]
 pub struct LightComponents<Factory: ServiceFactory> {
 	service: Service<LightComponents<Factory>>,
 }
