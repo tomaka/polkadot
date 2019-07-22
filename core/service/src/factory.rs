@@ -19,7 +19,8 @@ use crate::{SpawnTaskHandle, start_rpc_servers, build_network_future, components
 use crate::{AbstractService, TelemetryOnConnectNotifications, RpcSession, TransactionPoolAdapter};
 use crate::config::{Configuration, Roles};
 use client::{BlockchainEvents, Client, runtime_api};
-use consensus_common::import_queue::ImportQueue;
+use consensus_common::import_queue::{ImportQueue, IncomingBlock, Link, BlockImportError, BlockImportResult};
+use consensus_common::BlockOrigin;
 use exit_future::Signal;
 use futures::{prelude::*, future::Executor, sync::mpsc};
 use futures03::{StreamExt as _, TryStreamExt as _};
@@ -27,13 +28,14 @@ use keystore::Store as Keystore;
 use log::{debug, info, warn, error};
 use network::{FinalityProofProvider, OnDemand, NetworkService};
 use network::{config::BoxFinalityProofRequestBuilder, specialization::NetworkSpecialization};
+use parity_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use primitives::{Blake2Hasher, H256, Hasher, Pair, ed25519};
-use runtime_primitives::{BuildStorage, generic::BlockId};
-use runtime_primitives::traits::{Block as BlockT, ProvideRuntimeApi, Header, SaturatedConversion};
+use runtime_primitives::{BuildStorage, generic::SignedBlock, generic::BlockId};
+use runtime_primitives::traits::{Block as BlockT, NumberFor, Zero, One, ProvideRuntimeApi, Header, SaturatedConversion};
 use substrate_executor::{NativeExecutor, NativeExecutionDispatch};
 use serde::{Serialize, de::DeserializeOwned};
-use std::{marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, io::Read, io::Write, sync::Arc};
 use sysinfo::{get_current_pid, ProcessExt, System, SystemExt};
 use tel::{telemetry, SUBSTRATE_INFO};
 use transaction_pool::txpool::{ChainApi, Pool as TransactionPool};
@@ -366,6 +368,221 @@ impl<TBl, TRtApi, TCfg, TGen, TCl, TFchr, TSc, TImpQu, TFprb, TFpp, TNetP, TExPo
 			transaction_pool,
 			marker: self.marker,
 		})
+	}
+}
+
+impl<TBl, TRtApi, TCfg, TGen, TBackend, TExec, TFchr, TSc, TImpQu, TFprb, TFpp, TNetP, TExPool>
+ServiceBuilder<
+	TBl,
+	TRtApi,
+	TCfg,
+	TGen,
+	Client<TBackend, TExec, TBl, TRtApi>,
+	TFchr,
+	TSc,
+	TImpQu,
+	TFprb,
+	TFpp,
+	TNetP,
+	TExPool,
+> where
+	TBl: BlockT<Hash = <Blake2Hasher as Hasher>::Out>,
+	TGen: Serialize + DeserializeOwned + BuildStorage,
+	TBackend: 'static + client::backend::Backend<TBl, Blake2Hasher> + Send,
+	TExec: 'static + client::CallExecutor<TBl, Blake2Hasher> + Send + Sync + Clone,
+{
+	/// Revert the chain.
+	pub fn revert_chain(&self, blocks: NumberFor<TBl>) -> Result<(), Error> {
+		let reverted = self.client.revert(blocks)?;
+		let info = self.client.info().chain;
+
+		if reverted.is_zero() {
+			info!("There aren't any non-finalized blocks to revert.");
+		} else {
+			info!("Reverted {} blocks. Best: #{} ({})", reverted, info.best_number, info.best_hash);
+		}
+		Ok(())
+	}
+
+	/// Export a range of blocks to a binary stream.
+	pub fn export_blocks<E, W>(
+		&self,
+		exit: E,
+		mut output: W,
+		from: NumberFor<TBl>,
+		to: Option<NumberFor<TBl>>,
+		json: bool
+	) -> Result<(), Error>
+		where
+		E: Future<Item=(),Error=()> + Send + 'static,
+		W: Write,
+	{
+		let mut block = from;
+
+		let last = match to {
+			Some(v) if v.is_zero() => One::one(),
+			Some(v) => v,
+			None => self.client.info().chain.best_number,
+		};
+
+		if last < block {
+			return Err("Invalid block range specified".into());
+		}
+
+		let (exit_send, exit_recv) = std::sync::mpsc::channel();
+		::std::thread::spawn(move || {
+			let _ = exit.wait();
+			let _ = exit_send.send(());
+		});
+		info!("Exporting blocks from #{} to #{}", block, last);
+		if !json {
+			let last_: u64 = last.saturated_into::<u64>();
+			let block_: u64 = block.saturated_into::<u64>();
+			let len: u64 = last_ - block_ + 1;
+			output.write(&len.encode())?;
+		}
+
+		loop {
+			if exit_recv.try_recv().is_ok() {
+				break;
+			}
+			match self.client.block(&BlockId::number(block))? {
+				Some(block) => {
+					if json {
+						serde_json::to_writer(&mut output, &block)
+							.map_err(|e| format!("Error writing JSON: {}", e))?;
+					} else {
+						output.write(&block.encode())?;
+					}
+				},
+				None => break,
+			}
+			if (block % 10000.into()).is_zero() {
+				info!("#{}", block);
+			}
+			if block == last {
+				break;
+			}
+			block += One::one();
+		}
+		Ok(())
+	}
+}
+
+impl<TBl, TRtApi, TCfg, TGen, TBackend, TExec, TFchr, TSc, TImpQu, TFprb, TFpp, TNetP, TExPool>
+ServiceBuilder<
+	TBl,
+	TRtApi,
+	TCfg,
+	TGen,
+	Client<TBackend, TExec, TBl, TRtApi>,
+	TFchr,
+	TSc,
+	TImpQu,
+	TFprb,
+	TFpp,
+	TNetP,
+	TExPool,
+> where
+	TBl: BlockT<Hash = <Blake2Hasher as Hasher>::Out>,
+	TGen: Serialize + DeserializeOwned + BuildStorage,
+	TBackend: 'static + client::backend::Backend<TBl, Blake2Hasher> + Send,
+	TExec: 'static + client::CallExecutor<TBl, Blake2Hasher> + Send + Sync + Clone,
+	TImpQu: 'static + ImportQueue<TBl>,
+{
+	/// Returns a future that import blocks from a binary stream.
+	pub fn import_blocks<'a, E, R>(
+		&'a mut self,
+		exit: E,
+		mut input: R
+	) -> Result<impl Future<Item = (), Error = ()> + 'a, Error>
+		where E: Future<Item=(),Error=()> + Send + 'static, R: Read,
+	{
+		struct WaitLink {
+			imported_blocks: u64,
+		}
+
+		impl WaitLink {
+			fn new() -> WaitLink {
+				WaitLink {
+					imported_blocks: 0,
+				}
+			}
+		}
+
+		impl<B: BlockT> Link<B> for WaitLink {
+			fn blocks_processed(
+				&mut self,
+				imported: usize,
+				count: usize,
+				results: Vec<(Result<BlockImportResult<NumberFor<B>>, BlockImportError>, B::Hash)>
+			) {
+				self.imported_blocks += imported as u64;
+				if results.iter().any(|(r, _)| r.is_err()) {
+					warn!("There was an error importing {} blocks", count);
+				}
+			}
+		}
+
+		let (exit_send, exit_recv) = std::sync::mpsc::channel();
+		::std::thread::spawn(move || {
+			let _ = exit.wait();
+			let _ = exit_send.send(());
+		});
+
+		let count: u64 = Decode::decode(&mut input).ok_or("Error reading file")?;
+		info!("Importing {} blocks", count);
+		let mut block_count = 0;
+		for b in 0 .. count {
+			if exit_recv.try_recv().is_ok() {
+				break;
+			}
+			if let Some(signed) = SignedBlock::<TBl>::decode(&mut input) {
+				let (header, extrinsics) = signed.block.deconstruct();
+				let hash = header.hash();
+				// import queue handles verification and importing it into the client
+				self.import_queue.import_blocks(BlockOrigin::File, vec![
+					IncomingBlock::<TBl>{
+						hash,
+						header: Some(header),
+						body: Some(extrinsics),
+						justification: signed.justification,
+						origin: None,
+					}
+				]);
+			} else {
+				warn!("Error reading block data at {}.", b);
+				break;
+			}
+
+			block_count = b;
+			if b % 1000 == 0 && b != 0 {
+				info!("#{} blocks were added to the queue", b);
+			}
+		}
+
+		let mut link = WaitLink::new();
+		Ok(futures::future::poll_fn(move || {
+			if exit_recv.try_recv().is_ok() {
+				return Ok(Async::Ready(()));
+			}
+
+			let blocks_before = link.imported_blocks;
+			self.import_queue.poll_actions(&mut link);
+			if link.imported_blocks / 1000 != blocks_before / 1000 {
+				info!(
+					"#{} blocks were imported (#{} left)",
+					link.imported_blocks,
+					count - link.imported_blocks
+				);
+			}
+			if link.imported_blocks >= count {
+				info!("Imported {} blocks. Best: #{}", block_count, self.client.info().chain.best_number);
+				Ok(Async::Ready(()))
+			} else {
+				Ok(Async::NotReady)
+			}
+		}))
 	}
 }
 
