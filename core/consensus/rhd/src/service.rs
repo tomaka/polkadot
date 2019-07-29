@@ -18,21 +18,23 @@
 
 /// Consensus service. A long running service that manages BFT agreement
 /// the network.
+use std::task::{Context, Poll};
 use std::thread;
 use std::time::{Duration, Instant};
 use std::sync::Arc;
 
 use client::{BlockchainEvents, BlockBody};
 use futures::prelude::*;
+use futures_timer::Interval;
 use transaction_pool::txpool::{Pool as TransactionPool, ChainApi as PoolChainApi};
 use runtime_primitives::traits::{Block as BlockT, Header as HeaderT, BlockNumberToHash};
 
 use tokio::executor::current_thread::TaskExecutor as LocalThreadHandle;
 use tokio::runtime::TaskExecutor as ThreadPoolHandle;
 use tokio::runtime::current_thread::Runtime as LocalRuntime;
-use tokio::timer::Interval;
 
 use parking_lot::RwLock;
+use log::{trace, debug, info, warn};
 use consensus::{self, offline_tracker::OfflineTracker};
 
 use super::{Network, ProposerFactory, AuthoringApi};

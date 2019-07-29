@@ -15,6 +15,12 @@
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Substrate Client and associated logic.
+//!
+//! The `Client` consists mostly of two elements:
+//!
+//! - A database, containing blocks and their associated state.
+//! - An executor, which allows performing calls inside the runtime.
+//!
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(missing_docs)]

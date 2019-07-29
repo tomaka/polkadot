@@ -30,7 +30,6 @@
 //! In general, this future should be pre-empted by the import of a justification
 //! set for this block height.
 
-#![cfg(feature="rhd")]
 // FIXME #1020 doesn't compile
 // NOTE: this is the legacy constant used for transaction size. No longer used except
 // for the rhd code which is not updated. Placed here for compatibility.
@@ -38,14 +37,15 @@ const MAX_TRANSACTIONS_SIZE: u32 = 4 * 1024 * 1024;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{pin::Pin, task::Context, task::Poll};
 use std::time::{self, Instant, Duration};
 
 use parity_codec::{Decode, Encode};
 use consensus::offline_tracker::OfflineTracker;
-use consensus::error::{ErrorKind as CommonErrorKind};
 use consensus::{Authorities, BlockImport, Environment, Proposer as BaseProposer};
 use client::{Client as SubstrateClient, CallExecutor};
-use client::runtime_api::{Core, BlockBuilder as BlockBuilderAPI, OldTxQueue, BlockBuilderError};
+use client::runtime_api::Core;
+use client::block_builder::api::{BlockBuilder as BlockBuilderAPI, OldTxQueue, BlockBuilderError};
 use runtime_primitives::generic::{BlockId, Era, ImportResult, BlockImportParams, BlockOrigin};
 use runtime_primitives::traits::{Block, Header};
 use runtime_primitives::traits::{
@@ -59,18 +59,17 @@ use srml_system::Trait as SystemT;
 use node_runtime::Runtime;
 use transaction_pool::txpool::{self, Pool as TransactionPool};
 
-use futures::prelude::*;
-use futures::future;
-use futures::sync::oneshot;
+use futures::{prelude::*, channel::oneshot};
+use futures_timer::Delay;
+use log::{trace, debug, info, warn};
 use tokio::runtime::TaskExecutor;
-use tokio::timer::Delay;
 use parking_lot::{RwLock, Mutex};
 
 pub use rhododendron::{
 	self, InputStreamConcluded, AdvanceRoundReason, Message as RhdMessage,
 	Vote as RhdMessageVote, Communication as RhdCommunication,
 };
-pub use self::error::{Error, ErrorKind};
+pub use self::error::Error;
 
 // pub mod misbehavior_check;
 mod error;
@@ -358,26 +357,24 @@ impl<B, P, I, InStream, OutSink> Future for BftFuture<B, P, I, InStream, OutSink
 	B: Block + Clone + Eq,
 	B::Hash: ::std::hash::Hash,
 	P: LocalProposer<B>,
-	P: BaseProposer<B, Error=Error>,
+	P: BaseProposer<B, Error = Error>,
 	I: BlockImport<B>,
-	InStream: Stream<Item=Communication<B>, Error=Error>,
-	OutSink: Sink<SinkItem=Communication<B>, SinkError=Error>,
+	InStream: Stream<Item = Result<Communication<B>, Error>>,
+	OutSink: Sink<Communication<B>, Error = Error>,
 {
-	type Item = ();
-	type Error = ();
+	type Output = ();
 
-	fn poll(&mut self) -> ::futures::Poll<(), ()> {
+	fn poll(self: Pin<&mut Self>) -> Poll<()> {
 		// service has canceled the future. bail
 		let cancel = match self.cancel.poll() {
-			Ok(Async::Ready(())) | Err(_) => true,
-			Ok(Async::NotReady) => false,
+			Ok(Poll::Ready(())) | Err(_) => true,
+			Ok(Poll::Pending) => false,
 		};
 
 		let committed = match self.inner.poll().map_err(|_| ()) {
-			Ok(Async::Ready(x)) => x,
-			Ok(Async::NotReady) =>
-				return Ok(if cancel { Async::Ready(()) } else { Async::NotReady }),
-			Err(()) => return Err(()),
+			Poll::Ready(x) => x,
+			Poll::Pending =>
+				return Ok(if cancel { Poll::Ready(()) } else { Poll::Pending }),
 		};
 
 		// if something was committed, the round leader must have proposed.
@@ -424,7 +421,7 @@ impl<B, P, I, InStream, OutSink> Future for BftFuture<B, P, I, InStream, OutSink
 
 		self.inner.context().update_round_cache(committed.round_number);
 
-		Ok(Async::Ready(()))
+		Poll::Ready(())
 	}
 }
 
@@ -463,8 +460,6 @@ impl Drop for AgreementHandle {
 
 /// The BftService kicks off the agreement process on top of any blocks it
 /// is notified of.
-///
-/// This assumes that it is being run in the context of a tokio runtime.
 pub struct BftService<B: BlockT, P, I> {
 	client: Arc<I>,
 	live_agreement: Mutex<Option<(B::Header, AgreementHandle)>>,
@@ -672,7 +667,7 @@ impl<B: BlockT, S: Stream<Item=Vec<u8>>> Stream for CheckedStream<B, S>
 		use rhododendron::LocalizedMessage as RhdLocalized;
 		loop {
 			match self.inner.poll()? {
-				Async::Ready(Some(item)) => {
+				Poll::Ready(Some(item)) => {
 					let comms: Communication<B> = match Decode::decode(&mut &item[..]) {
 						Some(x) => x,
 						None => continue,
@@ -686,7 +681,7 @@ impl<B: BlockT, S: Stream<Item=Vec<u8>>> Stream for CheckedStream<B, S>
 								UncheckedJustification(prepare_just.uncheck()),
 							);
 							if let Ok(checked) = checked {
-								return Ok(Async::Ready(
+								return Ok(Poll::Ready(
 									Some(RhdCommunication::Auxiliary(checked.0))
 								));
 							}
@@ -701,7 +696,7 @@ impl<B: BlockT, S: Stream<Item=Vec<u8>>> Stream for CheckedStream<B, S>
 							);
 
 							if let Ok(()) = checked {
-								return Ok(Async::Ready(
+								return Ok(Poll::Ready(
 									Some(RhdCommunication::Consensus(RhdLocalized::Propose(p)))
 								));
 							}
@@ -716,15 +711,15 @@ impl<B: BlockT, S: Stream<Item=Vec<u8>>> Stream for CheckedStream<B, S>
 							);
 
 							if let Ok(()) = checked {
-								return Ok(Async::Ready(
+								return Ok(Poll::Ready(
 									Some(RhdCommunication::Consensus(RhdLocalized::Vote(v)))
 								));
 							}
 						}
 					}
 				}
-				Async::Ready(None) => return Ok(Async::Ready(None)),
-				Async::NotReady => return Ok(Async::NotReady),
+				Poll::Ready(None) => return Ok(Poll::Ready(None)),
+				Poll::Pending => return Ok(Poll::Pending),
 			}
 		}
 	}
@@ -1056,9 +1051,8 @@ impl<C, A> BaseProposer<<C as AuthoringApi>::Block> for Proposer<C, A> where
 		Into<<Runtime as SystemT>::Hash> + PartialEq<primitives::H256> + Into<primitives::H256>,
 	error::Error: From<<C as AuthoringApi>::Error>
 {
-	type Create = Result<<C as AuthoringApi>::Block, Error>;
+	type Create = future::Ready<Result<<C as AuthoringApi>::Block, Error>>;
 	type Error = Error;
-	type Evaluate = Box<Future<Item=bool, Error=Error>>;
 
 	fn propose(&self) -> Self::Create {
 		use runtime_primitives::traits::BlakeTwo256;
@@ -1131,7 +1125,7 @@ impl<C, A> BaseProposer<<C as AuthoringApi>::Block> for Proposer<C, A> where
 			self.parent_number,
 		).is_ok());
 
-		Ok(substrate_block)
+		future::ready(Ok(substrate_block))
 	}
 
 	fn evaluate(&self, unchecked_proposal: &<C as AuthoringApi>::Block) -> Self::Evaluate {
@@ -1182,10 +1176,10 @@ impl<C, A> BaseProposer<<C as AuthoringApi>::Block> for Proposer<C, A> where
 			};
 
 			match timestamp_delay {
-				Some(duration) => future::Either::A(
+				Some(duration) => future::Either::Left(
 					Delay::new(duration).map_err(|e| ErrorKind::Timer(e).into())
 				),
-				None => future::Either::B(future::ok(())),
+				None => future::Either::Right(future::ready(Ok(()))),
 			}
 		};
 
@@ -1200,14 +1194,14 @@ impl<C, A> BaseProposer<<C as AuthoringApi>::Block> for Proposer<C, A> where
 			}
 		};
 
-		let future = future::result(evaluated).and_then(move |good| {
+		let future = future::ready(evaluated).and_then(move |good| {
 			let end_result = future::ok(good);
 			if good {
 				// delay a "good" vote.
-				future::Either::A(vote_delays.and_then(|_| end_result))
+				future::Either::Left(vote_delays.and_then(|_| end_result))
 			} else {
 				// don't delay a "bad" evaluation.
-				future::Either::B(end_result)
+				future::Either::Right(end_result)
 			}
 		});
 
@@ -1368,11 +1362,11 @@ mod tests {
 		type SinkError = E;
 
 		fn start_send(&mut self, _item: Communication<TestBlock>) -> ::futures::StartSend<Communication<TestBlock>, E> {
-			Ok(::futures::AsyncSink::Ready)
+			Ok(::futures::PollSink::Ready)
 		}
 
 		fn poll_complete(&mut self) -> ::futures::Poll<(), E> {
-			Ok(Async::Ready(()))
+			Ok(Poll::Ready(()))
 		}
 	}
 
@@ -1381,7 +1375,7 @@ mod tests {
 		type Error = E;
 
 		fn poll(&mut self) -> ::futures::Poll<Option<Self::Item>, Self::Error> {
-			Ok(::futures::Async::NotReady)
+			Ok(::futures::Poll::Pending)
 		}
 	}
 
