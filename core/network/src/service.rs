@@ -25,13 +25,14 @@
 //! The methods of the [`NetworkService`] are implemented by sending a message over a channel,
 //! which is then processed by [`NetworkWorker::poll`].
 
-use std::{collections::HashMap, fs, marker::PhantomData, io, path::Path};
+use std::{collections::HashMap, fs, marker::PhantomData, io, path::Path, pin::Pin};
 use std::sync::{Arc, atomic::{AtomicBool, AtomicUsize, Ordering}};
+use std::task::{Context, Poll};
 
 use consensus::import_queue::{ImportQueue, Link};
 use consensus::import_queue::{BlockImportResult, BlockImportError};
-use futures::{prelude::*, sync::mpsc};
-use futures03::TryFutureExt as _;
+use futures::prelude::*;
+use futures03::{channel::mpsc, compat::Future01CompatExt as _, TryFutureExt as _};
 use log::{warn, error, info};
 use libp2p::{PeerId, Multiaddr, multihash::Multihash};
 use libp2p::core::{transport::boxed::Boxed, muxing::StreamMuxerBox};
@@ -45,7 +46,7 @@ use crate::{NetworkState, NetworkStateNotConnectedPeer, NetworkStatePeer};
 use crate::{transport, config::NodeKeyConfig, config::NonReservedPeerMode};
 use crate::config::{Params, TransportConfig};
 use crate::error::Error;
-use crate::protocol::{self, Protocol, Context, CustomMessageOutcome, PeerInfo};
+use crate::protocol::{self, Protocol, Context as ProtocolContext, CustomMessageOutcome, PeerInfo};
 use crate::protocol::consensus_gossip::{ConsensusGossip, MessageRecipient as GossipMessageRecipient};
 use crate::protocol::{event::Event, on_demand::{AlwaysBadChecker, RequestData}};
 use crate::protocol::specialization::NetworkSpecialization;
@@ -426,7 +427,7 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, H: ExHashT> NetworkServic
 
 	/// Execute a closure with the chain-specific network specialization.
 	pub fn with_spec<F>(&self, f: F)
-		where F: FnOnce(&mut S, &mut dyn Context<B>) + Send + 'static
+		where F: FnOnce(&mut S, &mut dyn ProtocolContext<B>) + Send + 'static
 	{
 		let _ = self
 			.to_worker
@@ -435,7 +436,7 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, H: ExHashT> NetworkServic
 
 	/// Execute a closure with the consensus gossip.
 	pub fn with_gossip<F>(&self, f: F)
-		where F: FnOnce(&mut ConsensusGossip<B>, &mut dyn Context<B>) + Send + 'static
+		where F: FnOnce(&mut ConsensusGossip<B>, &mut dyn ProtocolContext<B>) + Send + 'static
 	{
 		let _ = self
 			.to_worker
@@ -558,8 +559,8 @@ enum ServerToWorkerMsg<B: BlockT, S: NetworkSpecialization<B>> {
 	PropagateExtrinsics,
 	RequestJustification(B::Hash, NumberFor<B>),
 	AnnounceBlock(B::Hash),
-	ExecuteWithSpec(Box<dyn FnOnce(&mut S, &mut dyn Context<B>) + Send>),
-	ExecuteWithGossip(Box<dyn FnOnce(&mut ConsensusGossip<B>, &mut dyn Context<B>) + Send>),
+	ExecuteWithSpec(Box<dyn FnOnce(&mut S, &mut dyn ProtocolContext<B>) + Send>),
+	ExecuteWithGossip(Box<dyn FnOnce(&mut ConsensusGossip<B>, &mut dyn ProtocolContext<B>) + Send>),
 	GossipConsensusMessage(B::Hash, ConsensusEngineId, Vec<u8>, GossipMessageRecipient),
 	GetValue(Multihash),
 	PutValue(Multihash, Vec<u8>),
@@ -589,32 +590,31 @@ pub struct NetworkWorker<B: BlockT + 'static, S: NetworkSpecialization<B>, H: Ex
 	on_demand_in: Option<mpsc::UnboundedReceiver<RequestData<B>>>,
 }
 
-impl<B: BlockT + 'static, S: NetworkSpecialization<B>, H: ExHashT> Future for NetworkWorker<B, S, H> {
-	type Item = ();
-	type Error = io::Error;
+impl<B: BlockT + 'static, S: NetworkSpecialization<B>, H: ExHashT> Unpin for NetworkWorker<B, S, H> {
+}
 
-	fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+impl<B: BlockT + 'static, S: NetworkSpecialization<B>, H: ExHashT> futures03::Future for NetworkWorker<B, S, H> {
+	type Output = Result<(), io::Error>;
+
+	fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
 		// Poll the import queue for actions to perform.
-		let _ = futures03::future::poll_fn(|cx| {
-			self.import_queue.poll_actions(cx, &mut NetworkLink {
-				protocol: &mut self.network_service,
-			});
-			std::task::Poll::Pending::<Result<(), ()>>
-		}).compat().poll();
+		self.import_queue.poll_actions(cx, &mut NetworkLink {
+			protocol: &mut self.network_service,
+		});
 
 		// Check for new incoming on-demand requests.
 		if let Some(on_demand_in) = self.on_demand_in.as_mut() {
-			while let Ok(Async::Ready(Some(rq))) = on_demand_in.poll() {
+			while let Poll::Ready(Some(rq)) = futures03::Stream::poll_next(Pin::new(&mut on_demand_in), cx) {
 				self.network_service.user_protocol_mut().add_on_demand_request(rq);
 			}
 		}
 
 		loop {
 			// Process the next message coming from the `NetworkService`.
-			let msg = match self.from_worker.poll() {
-				Ok(Async::Ready(Some(msg))) => msg,
-				Ok(Async::Ready(None)) | Err(_) => return Ok(Async::Ready(())),
-				Ok(Async::NotReady) => break,
+			let msg = match futures03::Stream::poll_next(Pin::new(&mut self.from_worker), cx) {
+				Poll::Ready(Some(msg)) => msg,
+				Poll::Ready(None) => return Poll::Ready(Ok(())),
+				Poll::Pending => break,
 			};
 
 			match msg {
@@ -647,20 +647,21 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, H: ExHashT> Future for Ne
 
 		loop {
 			// Process the next action coming from the network.
-			let poll_value = self.network_service.poll();
+			let tmp_fut = futures::future::poll_fn(|| self.network_service.poll()).compat();
+			let poll_value = futures03::Future::poll(Pin::new(&mut tmp_fut), cx);
 
 			let outcome = match poll_value {
-				Ok(Async::NotReady) => break,
-				Ok(Async::Ready(Some(BehaviourOut::SubstrateAction(outcome)))) => outcome,
-				Ok(Async::Ready(Some(BehaviourOut::Dht(ev)))) => {
+				Poll::Pending => break,
+				Poll::Ready(Some(Ok(BehaviourOut::SubstrateAction(outcome)))) => outcome,
+				Poll::Ready(Some(Ok(BehaviourOut::Dht(ev)))) => {
 					self.network_service.user_protocol_mut()
 						.on_event(Event::Dht(ev));
 					CustomMessageOutcome::None
 				},
-				Ok(Async::Ready(None)) => CustomMessageOutcome::None,
-				Err(err) => {
+				Poll::Ready(None) => CustomMessageOutcome::None,
+				Poll::Ready(Some(Err(err))) => {
 					error!(target: "sync", "Error in the network: {:?}", err);
-					return Err(err)
+					return Poll::Ready(Err(err))
 				}
 			};
 
@@ -686,7 +687,7 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, H: ExHashT> Future for Ne
 			SyncState::Downloading => true,
 		}, Ordering::Relaxed);
 
-		Ok(Async::NotReady)
+		Poll::Pending
 	}
 }
 

@@ -18,7 +18,8 @@
 
 use crate::protocol::on_demand::RequestData;
 use std::sync::Arc;
-use futures::{prelude::*, sync::mpsc, sync::oneshot};
+use futures::prelude::*;
+use futures03::channel::{mpsc, oneshot};
 use futures03::compat::{Compat01As03, Future01CompatExt as _};
 use parking_lot::Mutex;
 use client::error::Error as ClientError;
