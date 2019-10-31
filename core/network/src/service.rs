@@ -659,28 +659,41 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, H: ExHashT> Stream for Ne
 
 	fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
 		// Poll the import queue for actions to perform.
+			let before = std::time::Instant::now();
 		let _ = futures03::future::poll_fn(|cx| {
 			self.import_queue.poll_actions(cx, &mut NetworkLink {
 				protocol: &mut self.network_service,
 			});
 			std::task::Poll::Pending::<Result<(), ()>>
 		}).compat().poll();
+			if before.elapsed() > std::time::Duration::from_millis(500) {
+				println!("self.import_queue took {:?}", before.elapsed());
+			}
 
 		// Check for new incoming light client requests.
+		let before = std::time::Instant::now();
 		if let Some(light_client_rqs) = self.light_client_rqs.as_mut() {
 			while let Ok(Async::Ready(Some(rq))) = light_client_rqs.poll() {
 				self.network_service.user_protocol_mut().add_light_client_request(rq);
 			}
 		}
+		if before.elapsed() > std::time::Duration::from_millis(500) {
+			println!("light client rqs took {:?}", before.elapsed());
+		}
 
 		loop {
 			// Process the next message coming from the `NetworkService`.
+			let before = std::time::Instant::now();
 			let msg = match self.from_worker.poll() {
 				Ok(Async::Ready(Some(msg))) => msg,
 				Ok(Async::Ready(None)) | Err(_) => return Ok(Async::Ready(None)),
 				Ok(Async::NotReady) => break,
 			};
+			if before.elapsed() > std::time::Duration::from_millis(500) {
+				println!("self.from_worker took {:?}", before.elapsed());
+			}
 
+			let before = std::time::Instant::now();
 			match msg {
 				ServerToWorkerMsg::ExecuteWithSpec(task) => {
 					let protocol = self.network_service.user_protocol_mut();
@@ -709,11 +722,18 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, H: ExHashT> Stream for Ne
 				ServerToWorkerMsg::SyncFork(peer_ids, hash, number) =>
 					self.network_service.user_protocol_mut().set_sync_fork_request(peer_ids, &hash, number),
 			}
+			if before.elapsed() > std::time::Duration::from_millis(500) {
+				println!("msg apply took {:?}", before.elapsed());
+			}
 		}
 
 		loop {
 			// Process the next action coming from the network.
+			let before = std::time::Instant::now();
 			let poll_value = self.network_service.poll();
+			if before.elapsed() > std::time::Duration::from_millis(500) {
+				println!("self.network_service took {:?}", before.elapsed());
+			}
 
 			let outcome = match poll_value {
 				Ok(Async::NotReady) => break,
@@ -731,6 +751,7 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, H: ExHashT> Stream for Ne
 				}
 			};
 
+			let before = std::time::Instant::now();
 			match outcome {
 				CustomMessageOutcome::BlockImport(origin, blocks) =>
 					self.import_queue.import_blocks(origin, blocks),
@@ -739,6 +760,9 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, H: ExHashT> Stream for Ne
 				CustomMessageOutcome::FinalityProofImport(origin, hash, nb, proof) =>
 					self.import_queue.import_finality_proof(origin, hash, nb, proof),
 				CustomMessageOutcome::None => {}
+			}
+			if before.elapsed() > std::time::Duration::from_millis(500) {
+				println!("outcome apply took {:?}", before.elapsed());
 			}
 		}
 

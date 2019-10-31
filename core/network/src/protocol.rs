@@ -1656,6 +1656,7 @@ Protocol<B, S, H> {
 			Self::OutEvent
 		>
 	> {
+			let before = std::time::Instant::now();
 		while let Ok(Async::Ready(_)) = self.tick_timeout.poll() {
 			self.tick();
 		}
@@ -1674,17 +1675,54 @@ Protocol<B, S, H> {
 			send_message(&mut self.behaviour, &mut self.context_data.peers, id, GenericMessage::FinalityProofRequest(r))
 		}
 
+			let before_beh = std::time::Instant::now();
 		let event = match self.behaviour.poll(params) {
-			Async::NotReady => return Async::NotReady,
+			Async::NotReady => {
+				if before_beh.elapsed() > std::time::Duration::from_millis(500) {
+					println!("legacy behaviour poll took {:?}", before_beh.elapsed());
+				}
+				if before.elapsed() > std::time::Duration::from_millis(500) {
+					println!("protocol poll took {:?}", before.elapsed());
+				}
+				return Async::NotReady
+			},
 			Async::Ready(NetworkBehaviourAction::GenerateEvent(ev)) => ev,
-			Async::Ready(NetworkBehaviourAction::DialAddress { address }) =>
-				return Async::Ready(NetworkBehaviourAction::DialAddress { address }),
-			Async::Ready(NetworkBehaviourAction::DialPeer { peer_id }) =>
-				return Async::Ready(NetworkBehaviourAction::DialPeer { peer_id }),
-			Async::Ready(NetworkBehaviourAction::SendEvent { peer_id, event }) =>
-				return Async::Ready(NetworkBehaviourAction::SendEvent { peer_id, event }),
-			Async::Ready(NetworkBehaviourAction::ReportObservedAddr { address }) =>
-				return Async::Ready(NetworkBehaviourAction::ReportObservedAddr { address }),
+			Async::Ready(NetworkBehaviourAction::DialAddress { address }) =>{
+				if before_beh.elapsed() > std::time::Duration::from_millis(500) {
+					println!("legacy behaviour poll took {:?}", before_beh.elapsed());
+				}
+				if before.elapsed() > std::time::Duration::from_millis(500) {
+					println!("protocol poll took {:?}", before.elapsed());
+				}
+				return Async::Ready(NetworkBehaviourAction::DialAddress { address })
+			},
+			Async::Ready(NetworkBehaviourAction::DialPeer { peer_id }) =>{
+				if before_beh.elapsed() > std::time::Duration::from_millis(500) {
+					println!("legacy behaviour poll took {:?}", before_beh.elapsed());
+				}
+				if before.elapsed() > std::time::Duration::from_millis(500) {
+					println!("protocol poll took {:?}", before.elapsed());
+				}
+				return Async::Ready(NetworkBehaviourAction::DialPeer { peer_id })
+			},
+			Async::Ready(NetworkBehaviourAction::SendEvent { peer_id, event }) =>{
+				if before_beh.elapsed() > std::time::Duration::from_millis(500) {
+					println!("legacy behaviour poll took {:?}", before_beh.elapsed());
+				}
+				if before.elapsed() > std::time::Duration::from_millis(500) {
+					println!("protocol poll took {:?}", before.elapsed());
+				}
+				return Async::Ready(NetworkBehaviourAction::SendEvent { peer_id, event })
+			},
+			Async::Ready(NetworkBehaviourAction::ReportObservedAddr { address }) =>{
+				if before_beh.elapsed() > std::time::Duration::from_millis(500) {
+					println!("legacy behaviour poll took {:?}", before_beh.elapsed());
+				}
+				if before.elapsed() > std::time::Duration::from_millis(500) {
+					println!("protocol poll took {:?}", before.elapsed());
+				}
+				return Async::Ready(NetworkBehaviourAction::ReportObservedAddr { address })
+			},
 		};
 
 		let outcome = match event {
@@ -1712,6 +1750,9 @@ Protocol<B, S, H> {
 			}
 		};
 
+		if before.elapsed() > std::time::Duration::from_millis(500) {
+			println!("protocol poll took {:?}", before.elapsed());
+		}
 		if let CustomMessageOutcome::None = outcome {
 			Async::NotReady
 		} else {
