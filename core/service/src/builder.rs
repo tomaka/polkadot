@@ -26,6 +26,7 @@ use chain_spec::{RuntimeGenesis, Extension};
 use codec::{Decode, Encode, IoReader};
 use consensus_common::import_queue::ImportQueue;
 use futures::{prelude::*, sync::mpsc};
+use futures_diagnose_exec::{FutureExt as _, Future01Ext as _};
 use futures03::{
 	compat::Compat,
 	future::ready,
@@ -896,21 +897,21 @@ ServiceBuilder<
 							&*txpool,
 							&notification.retracted,
 						).map_err(|e| warn!("Pool error processing new block: {:?}", e))?;
-						let _ = to_spawn_tx_.unbounded_send(future);
+						let _ = to_spawn_tx_.unbounded_send(Box::new(future.with_diagnostics("tx-pool-maintain")));
 					}
 
 					let offchain = offchain.as_ref().and_then(|o| o.upgrade());
 					if let (Some(txpool), Some(offchain)) = (txpool, offchain) {
 						let future = offchain.on_block_imported(&number, &txpool, network_state_info.clone(), is_validator)
 							.map(|()| Ok(()));
-						let _ = to_spawn_tx_.unbounded_send(Box::new(Compat::new(future)));
+						let _ = to_spawn_tx_.unbounded_send(Box::new(Compat::new(future.with_diagnostics("offchain-workers"))));
 					}
 
 					Ok(())
 				})
 				.select(exit.clone())
 				.then(|_| Ok(()));
-			let _ = to_spawn_tx.unbounded_send(Box::new(events));
+			let _ = to_spawn_tx.unbounded_send(Box::new(events.with_diagnostics("spawn-block-post-process")));
 		}
 
 		{
@@ -933,7 +934,7 @@ ServiceBuilder<
 				.select(exit.clone())
 				.then(|_| Ok(()));
 
-			let _ = to_spawn_tx.unbounded_send(Box::new(events));
+			let _ = to_spawn_tx.unbounded_send(Box::new(events.with_diagnostics("extrinsic-notif")));
 		}
 
 		// Periodically notify the telemetry.
@@ -985,7 +986,7 @@ ServiceBuilder<
 
 			Ok(())
 		}).select(exit.clone()).then(|_| Ok(()));
-		let _ = to_spawn_tx.unbounded_send(Box::new(tel_task));
+		let _ = to_spawn_tx.unbounded_send(Box::new(tel_task.with_diagnostics("telemetry-periodic")));
 
 		// Periodically send the network state to the telemetry.
 		let (netstat_tx, netstat_rx) = mpsc::unbounded::<(NetworkStatus<_>, NetworkState)>();
@@ -998,7 +999,7 @@ ServiceBuilder<
 			);
 			Ok(())
 		}).select(exit.clone()).then(|_| Ok(()));
-		let _ = to_spawn_tx.unbounded_send(Box::new(tel_task_2));
+		let _ = to_spawn_tx.unbounded_send(Box::new(tel_task_2.with_diagnostics("telemetry-periodic-netstate")));
 
 		// RPC
 		let (system_rpc_tx, system_rpc_rx) = futures03::channel::mpsc::unbounded();
@@ -1070,6 +1071,7 @@ ServiceBuilder<
 			has_bootnodes,
 			dht_event_tx,
 		)
+			.with_diagnostics("network")
 			.map_err(|_| ())
 			.select(exit.clone())
 			.then(|_| Ok(()))));
@@ -1112,6 +1114,7 @@ ServiceBuilder<
 					Ok(())
 				});
 			let _ = to_spawn_tx.unbounded_send(Box::new(future
+				.with_diagnostics("telemetry-connected")
 				.select(exit.clone())
 				.then(|_| Ok(()))));
 			telemetry

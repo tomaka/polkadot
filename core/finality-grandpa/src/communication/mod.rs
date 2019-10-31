@@ -31,6 +31,7 @@ use std::sync::Arc;
 
 use futures::prelude::*;
 use futures::sync::{oneshot, mpsc};
+use futures_diagnose_exec::Future01Ext as _;
 use futures03::stream::{StreamExt, TryStreamExt};
 use grandpa::Message::{Prevote, Precommit, PrimaryPropose};
 use grandpa::{voter, voter_set::VoterSet};
@@ -350,11 +351,11 @@ impl<B: BlockT, N: Network<B>> NetworkBridge<B, N> {
 			// lazily spawn these jobs onto their own tasks. the lazy future has access
 			// to tokio globals, which aren't available outside.
 			let mut executor = tokio_executor::DefaultExecutor::current();
-			executor.spawn(Box::new(rebroadcast_job.select(on_exit.clone()).then(|_| Ok(()))))
+			executor.spawn(Box::new(rebroadcast_job.with_diagnostics("grandpa-rebroadcast").select(on_exit.clone()).then(|_| Ok(()))))
 				.expect("failed to spawn grandpa rebroadcast job task");
-			executor.spawn(Box::new(announce_job.select(on_exit.clone()).then(|_| Ok(()))))
+			executor.spawn(Box::new(announce_job.with_diagnostics("grandpa-announce").select(on_exit.clone()).then(|_| Ok(()))))
 				.expect("failed to spawn grandpa block announce job task");
-			executor.spawn(Box::new(reporting_job.select(on_exit.clone()).then(|_| Ok(()))))
+			executor.spawn(Box::new(reporting_job.with_diagnostics("grandpa-reporting").select(on_exit.clone()).then(|_| Ok(()))))
 				.expect("failed to spawn grandpa reporting job task");
 			Ok(())
 		});
