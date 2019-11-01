@@ -368,7 +368,11 @@ fn build_network_future<
 
 		// We poll `imported_blocks_stream`.
 		while let Ok(Async::Ready(Some(notification))) = imported_blocks_stream.poll() {
+			let bef = Instant::now();
 			network.on_block_imported(notification.hash, notification.header, Vec::new(), notification.is_new_best);
+			if bef.elapsed() >= Duration::from_millis(500) {
+				println!("calling on_block_imported took {:?}", bef.elapsed());
+			}
 		}
 
 		// We poll `finality_notification_stream`, but we only take the last event.
@@ -377,11 +381,16 @@ fn build_network_future<
 			last = Some(item);
 		}
 		if let Some(notification) = last {
+			let bef = Instant::now();
 			network.on_block_finalized(notification.hash, notification.header);
+			if bef.elapsed() >= Duration::from_millis(500) {
+				println!("calling on_block_finalized took {:?}", bef.elapsed());
+			}
 		}
 
 		// Poll the RPC requests and answer them.
 		while let Ok(Async::Ready(Some(request))) = rpc_rx.poll() {
+			let bef = Instant::now();
 			match request {
 				rpc::system::Request::Health(sender) => {
 					let _ = sender.send(rpc::system::Health {
@@ -422,9 +431,13 @@ fn build_network_future<
 					let _ = sender.send(node_roles);
 				}
 			};
+			if bef.elapsed() >= Duration::from_millis(500) {
+				println!("handling rpcs took {:?}", bef.elapsed());
+			}
 		}
 
 		// Interval report for the external API.
+		let bef = Instant::now();
 		status_sinks.lock().poll(|| {
 			let status = NetworkStatus {
 				sync_state: network.sync_state(),
@@ -438,6 +451,9 @@ fn build_network_future<
 			let state = network.network_state();
 			(status, state)
 		});
+		if bef.elapsed() >= Duration::from_millis(500) {
+			println!("status_sinks took {:?}", bef.elapsed());
+		}
 
 		// Main network polling.
 		while let Ok(Async::Ready(Some(Event::Dht(event)))) = network.poll().map_err(|err| {
