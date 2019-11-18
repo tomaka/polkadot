@@ -265,11 +265,10 @@ where TSubstream: AsyncRead + AsyncWrite + Send + 'static {
 					State::Poisoned => error!("Notifications handler in a poisoned state"),
 				}
 			},
-			NotifsOutHandlerIn::Send(msg) => {
-				if let State::Open(sub) = &self.state {
-					unimplemented!()
-				}
-			},
+			NotifsOutHandlerIn::Send(msg) =>
+				if let State::Open(sub) = &mut self.state {
+					sub.push_message(msg);
+				},
 		}
 	}
 
@@ -298,6 +297,14 @@ where TSubstream: AsyncRead + AsyncWrite + Send + 'static {
 		if !self.events_queue.is_empty() {
 			let event = self.events_queue.remove(0);
 			return Ok(Async::Ready(event))
+		}
+
+		match &mut self.state {
+			State::Open(sub) | State::DisabledOpen(sub) => match sub.process() {
+				Ok(()) => {},
+				Err(err) => {},		// TODO: ?
+			},
+			_ => {}
 		}
 
 		Ok(Async::NotReady)

@@ -261,7 +261,6 @@ where TSubstream: AsyncRead + AsyncWrite + Send + 'static {
 				if let Some(proto_name) = proto_name {
 					for handler in &mut self.out_handlers {
 						if handler.is_open() && handler.protocol_name() == &proto_name[..] {
-							log::error!("Message sent using new protocol");
 							handler.inject_event(NotifsOutHandlerIn::Send(message));
 							return;
 						}

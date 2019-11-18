@@ -39,7 +39,7 @@ use futures::prelude::*;
 use libp2p::core::{Negotiated, UpgradeInfo, InboundUpgrade, OutboundUpgrade, upgrade};
 use libp2p::tokio_codec::Framed;
 use log::error;
-use std::{borrow::Cow, io, iter, mem};
+use std::{borrow::Cow, collections::VecDeque, io, iter, mem};
 use tokio_io::{AsyncRead, AsyncWrite};
 use unsigned_varint::codec::UviBytes;
 
@@ -82,7 +82,12 @@ enum NotificationsInSubstreamHandshake {
 
 /// A substream for outgoing notification messages.
 pub struct NotificationsOutSubstream<TSubstream> {
+	/// Substream where to send messages.
 	socket: Framed<Negotiated<TSubstream>, UviBytes<Vec<u8>>>,
+	/// Queue of messages waiting to be sent.
+	messages_queue: VecDeque<Vec<u8>>,
+	/// If true, we need to flush `socket`.
+	need_flush: bool,
 }
 
 impl NotificationsIn {
@@ -213,7 +218,12 @@ where TSubstream: AsyncRead + AsyncWrite + Send + 'static,
 			.map_err(|(err, _)| err)
 			.and_then(|(handshake, socket)| {
 				if let Some(handshake) = handshake {
-					Ok((handshake, NotificationsOutSubstream { socket }))
+					let sub = NotificationsOutSubstream {
+						socket,
+						messages_queue: VecDeque::new(),
+						need_flush: false,
+					};
+					Ok((handshake, sub))
 				} else {
 					Err(io::Error::from(io::ErrorKind::UnexpectedEof))
 				}
@@ -221,21 +231,36 @@ where TSubstream: AsyncRead + AsyncWrite + Send + 'static,
 	}
 }
 
-impl<TSubstream> Sink for NotificationsOutSubstream<TSubstream>
+impl<TSubstream> NotificationsOutSubstream<TSubstream>
 where TSubstream: AsyncRead + AsyncWrite + 'static,
 {
-	type SinkItem = Vec<u8>;
-	type SinkError = io::Error;
-
-	fn start_send(&mut self, item: Self::SinkItem) -> StartSend<Self::SinkItem, Self::SinkError> {
-		self.socket.start_send(item)
+	/// Pushes a message to the queue of messages.
+	pub fn push_message(&mut self, message: Vec<u8>) {
+		// TODO: limit the size of the queue
+		self.messages_queue.push_back(message);
 	}
 
-	fn poll_complete(&mut self) -> Poll<(), Self::SinkError> {
-		self.socket.poll_complete()
-	}
+	/// Processes the substream. Must be called within the context of a task.
+	pub fn process(&mut self) -> Result<(), io::Error> {
+		while let Some(msg) = self.messages_queue.pop_front() {
+			match self.socket.start_send(msg) {
+				Err(err) => return Err(err),
+				Ok(AsyncSink::Ready) => self.need_flush = true,
+				Ok(AsyncSink::NotReady(msg)) => {
+					self.messages_queue.push_front(msg);
+					return Ok(());
+				}
+			}
+		}
 
-	fn close(&mut self) -> Poll<(), Self::SinkError> {
-		self.socket.close()
+		if self.need_flush {
+			match self.socket.poll_complete() {
+				Err(err) => return Err(err),
+				Ok(Async::Ready(())) => self.need_flush = false,
+				Ok(Async::NotReady) => {},
+			}
+		}
+
+		Ok(())
 	}
 }

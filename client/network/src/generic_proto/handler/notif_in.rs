@@ -163,7 +163,7 @@ where TSubstream: AsyncRead + AsyncWrite + 'static {
 
 	fn inject_fully_negotiated_inbound(
 		&mut self,
-		mut proto: <Self::InboundProtocol as InboundUpgrade<TSubstream>>::Output
+		proto: <Self::InboundProtocol as InboundUpgrade<TSubstream>>::Output
 	) {
 		if self.substream.is_some() {
 			warn!(target: "sub-libp2p", "Received duplicate inbound substream");
@@ -242,10 +242,8 @@ where TSubstream: AsyncRead + AsyncWrite + 'static {
 
 		if let Some(substream) = self.substream.as_mut() {
 			match substream.poll() {
-				Ok(Async::Ready(Some(msg))) => {
-					panic!("Got message!");		// TODO: remove
-					return Ok(Async::Ready(ProtocolsHandlerEvent::Custom(NotifsInHandlerOut::Notif(msg))))
-				},
+				Ok(Async::Ready(Some(msg))) =>
+					return Ok(Async::Ready(ProtocolsHandlerEvent::Custom(NotifsInHandlerOut::Notif(msg)))),
 				Ok(Async::NotReady) => {},
 				Ok(Async::Ready(None)) | Err(_) => return Err(ConnectionKillError),		// TODO: ?
 			}
