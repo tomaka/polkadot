@@ -7,4 +7,3 @@ edition = "2018"
 
 [dependencies]
 backtrace = "0.3.38"
-log = "0.4.8"
