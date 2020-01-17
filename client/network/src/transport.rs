@@ -99,21 +99,13 @@ pub fn build_transport(
 	// For non-WASM, we support both secio and noise.
 	#[cfg(not(target_os = "unknown"))]
 	let transport = transport.and_then(move |stream, endpoint| {
-		let upgrade = core::upgrade::SelectUpgrade::new(noise_config, secio_config);
+		let upgrade = secio_config;
 		core::upgrade::apply(stream, upgrade, endpoint, upgrade::Version::V1)
-			.map(|out| match out? {
-				// We negotiated noise
-				EitherOutput::First((remote_id, out)) => {
-					let remote_key = match remote_id {
-						noise::RemoteIdentity::IdentityKey(key) => key,
-						_ => return Err(upgrade::UpgradeError::Apply(EitherError::A(noise::NoiseError::InvalidKey)))
-					};
-					Ok((EitherOutput::First(out), remote_key.into_peer_id()))
-				}
+			.map(|out| -> Result<_, std::io::Error> { match out.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))? {
 				// We negotiated secio
-				EitherOutput::Second((remote_id, out)) =>
-					Ok((EitherOutput::Second(out), remote_id))
-			})
+				(remote_id, out) =>
+					Ok((out, remote_id))
+			}})
 	});
 
 	// For WASM, we only support secio for now.
@@ -126,7 +118,7 @@ pub fn build_transport(
 	// Multiplexing
 	let transport = transport.and_then(move |(stream, peer_id), endpoint| {
 			let peer_id2 = peer_id.clone();
-			let upgrade = core::upgrade::SelectUpgrade::new(yamux_config, mplex_config)
+			let upgrade = mplex_config
 				.map_inbound(move |muxer| (peer_id, muxer))
 				.map_outbound(move |muxer| (peer_id2, muxer));
 
