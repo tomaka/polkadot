@@ -61,16 +61,49 @@ pub fn build_transport(
 	let yamux_config = yamux::Config::default();
 
 	// Build the base layer of the transport.
+	let sinks; // TODO: fix
 	let transport = if let Some(t) = wasm_external_transport {
+		// TODO: that's a hack
+		let (t, s) = bandwidth::BandwidthLogging::new(t, Duration::from_secs(5));
+		sinks = s;
+
+		let t = t.and_then(move |stream, endpoint| {
+			core::upgrade::apply(stream, secio_config, endpoint, upgrade::Version::V1)
+				.map_ok(|(remote_id, out)| (out, remote_id))
+		});
+
 		OptionalTransport::some(t)
 	} else {
 		OptionalTransport::none()
 	};
+
 	#[cfg(not(target_os = "unknown"))]
 	let transport = transport.or_transport(if !memory_only {
-		let desktop_trans = tcp::TcpConfig::new();
-		let desktop_trans = websocket::WsConfig::new(desktop_trans.clone())
-			.or_transport(desktop_trans);
+		let desktop_trans = tcp::TcpConfig::new()
+			.and_then(move |stream, endpoint| {
+				core::upgrade::apply(stream, noise_config, endpoint, upgrade::Version::V1)
+					.and_then(|(remote_id, out)| async move {
+						let remote_key = match remote_id {
+							noise::RemoteIdentity::IdentityKey(key) => key,
+							_ => return Err(upgrade::UpgradeError::Apply(EitherError::A(noise::NoiseError::InvalidKey)))
+						};
+						Ok((out, remote_key.into_peer_id()))
+					})
+			});
+
+		let ws_trans = websocket::WsConfig::new(tcp::TcpConfig::new())
+			.and_then(move |stream, endpoint| {
+				core::upgrade::apply(stream, secio_config, endpoint, upgrade::Version::V1)
+					.map_ok(|(remote_id, out)| (out, remote_id))
+			});
+
+		let final_trans = ws_trans.or_transport(desktop_trans)
+			.map(|out, _| {
+				match out {
+					EitherOutput::First((a, b)) => (EitherOutput::First(a), b),
+					EitherOutput::Second((a, b)) => (EitherOutput::Second(a), b),
+				}
+			});
 		OptionalTransport::some(if let Ok(dns) = dns::DnsConfig::new(desktop_trans.clone()) {
 			dns.boxed()
 		} else {
@@ -78,47 +111,44 @@ pub fn build_transport(
 		})
 	} else {
 		OptionalTransport::none()
+	})
+	.map(|out, _| {
+		match out {
+			EitherOutput::First((a, b)) => (EitherOutput::First(a), b),
+			EitherOutput::Second((a, b)) => (EitherOutput::Second(a), b),
+		}
 	});
 
 	let transport = transport.or_transport(if memory_only {
-		OptionalTransport::some(libp2p::core::transport::MemoryTransport::default())
+		let mem = libp2p::core::transport::MemoryTransport::default()
+			.and_then(move |stream, endpoint| {
+				core::upgrade::apply(stream, noise_config, endpoint, upgrade::Version::V1)
+					.and_then(|(remote_id, out)| async move {
+						let remote_key = match remote_id {
+							noise::RemoteIdentity::IdentityKey(key) => key,
+							_ => return Err(upgrade::UpgradeError::Apply(EitherError::A(noise::NoiseError::InvalidKey)))
+						};
+						Ok((out, remote_key.into_peer_id()))
+					})
+			});
+
+		OptionalTransport::some(mem)
 	} else {
 		OptionalTransport::none()
 	});
 
-	let (transport, sinks) = bandwidth::BandwidthLogging::new(transport, Duration::from_secs(5));
-
-	// Encryption
-
-	// For non-WASM, we support both secio and noise.
-	#[cfg(not(target_os = "unknown"))]
-	let transport = transport.and_then(move |stream, endpoint| {
-		let upgrade = core::upgrade::SelectUpgrade::new(noise_config, secio_config);
-		core::upgrade::apply(stream, upgrade, endpoint, upgrade::Version::V1)
-			.map(|out| match out? {
-				// We negotiated noise
-				EitherOutput::First((remote_id, out)) => {
-					let remote_key = match remote_id {
-						noise::RemoteIdentity::IdentityKey(key) => key,
-						_ => return Err(upgrade::UpgradeError::Apply(EitherError::A(noise::NoiseError::InvalidKey)))
-					};
-					Ok((EitherOutput::First(out), remote_key.into_peer_id()))
-				}
-				// We negotiated secio
-				EitherOutput::Second((remote_id, out)) =>
-					Ok((EitherOutput::Second(out), remote_id))
-			})
-	});
-
-	// For WASM, we only support secio for now.
-	#[cfg(target_os = "unknown")]
-	let transport = transport.and_then(move |stream, endpoint| {
-		core::upgrade::apply(stream, secio_config, endpoint, upgrade::Version::V1)
-			.map_ok(|(id, stream)| ((stream, id)))
-	});
+	// TODO: uuuuugh
+	let transport = transport
+		.and_t(|out, _| {
+			match out {
+				EitherOutput::First((a, b)) => (EitherOutput::First(a), b),
+				EitherOutput::Second((a, b)) => (EitherOutput::Second(a), b),
+			}
+		});
 
 	// Multiplexing
-	let transport = transport.and_then(move |(stream, peer_id), endpoint| {
+	let transport = transport
+		.and_then(move |(stream, peer_id), endpoint| {
 			let peer_id2 = peer_id.clone();
 			let upgrade = core::upgrade::SelectUpgrade::new(yamux_config, mplex_config)
 				.map_inbound(move |muxer| (peer_id, muxer))
