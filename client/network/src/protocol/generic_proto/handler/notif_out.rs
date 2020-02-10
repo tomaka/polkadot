@@ -182,20 +182,7 @@ pub enum NotifsOutHandlerOut {
 }
 
 impl<TSubstream> NotifsOutHandler<TSubstream> {
-	/// Returns true if the handler is enabled.
-	pub fn is_enabled(&self) -> bool {
-		match &self.state {
-			State::Disabled => false,
-			State::DisabledOpening => false,
-			State::DisabledOpen(_) => false,
-			State::Opening => true,
-			State::Refused => true,
-			State::Open(_) => true,
-			State::Poisoned => false,
-		}
-	}
-
-	/// Returns true if the substream is open.
+	/// Returns true if the substream is currently open.
 	pub fn is_open(&self) -> bool {
 		match &self.state {
 			State::Disabled => false,
@@ -263,7 +250,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static {
 			NotifsOutHandlerIn::Enable => {
 				match mem::replace(&mut self.state, State::Poisoned) {
 					State::Disabled => {
-						let proto = NotificationsOut::new(self.proto_name.clone());
+						let proto = NotificationsOut::new(self.proto_name.clone(), vec![]); // TODO: initial message
 						self.events_queue.push(ProtocolsHandlerEvent::OutboundSubstreamRequest {
 							protocol: SubstreamProtocol::new(proto).with_timeout(OPEN_TIMEOUT),
 							info: (),
@@ -283,7 +270,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static {
 							);
 						}
 
-						let proto = NotificationsOut::new(self.proto_name.clone());
+						let proto = NotificationsOut::new(self.proto_name.clone(), vec![]); // TODO: initial message
 						self.events_queue.push(ProtocolsHandlerEvent::OutboundSubstreamRequest {
 							protocol: SubstreamProtocol::new(proto).with_timeout(OPEN_TIMEOUT),
 							info: (),
@@ -368,16 +355,15 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static {
 		match &mut self.state {
 			State::Open(sub) => match Sink::poll_flush(Pin::new(sub), cx) {
 				Poll::Pending | Poll::Ready(Ok(())) => {},
-				Poll::Ready(Err(err)) => {
+				Poll::Ready(Err(_)) => {
 					// We try to re-open a substream.
 					self.state = State::Opening;
-					let proto = NotificationsOut::new(self.proto_name.clone());
+					let proto = NotificationsOut::new(self.proto_name.clone(), vec![]); // TODO: initial message
 					self.events_queue.push(ProtocolsHandlerEvent::OutboundSubstreamRequest {
 						protocol: SubstreamProtocol::new(proto).with_timeout(OPEN_TIMEOUT),
 						info: (),
 					});
-					let ev = NotifsOutHandlerOut::Closed;
-					return Poll::Ready(ProtocolsHandlerEvent::Custom(ev));
+					return Poll::Ready(ProtocolsHandlerEvent::Custom(NotifsOutHandlerOut::Closed));
 				}
 			},
 
@@ -385,8 +371,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static {
 				Poll::Pending => {},
 				Poll::Ready(Ok(())) | Poll::Ready(Err(_)) => {
 					self.state = State::Disabled;
-					let ev = NotifsOutHandlerOut::Closed;
-					return Poll::Ready(ProtocolsHandlerEvent::Custom(ev));
+					return Poll::Ready(ProtocolsHandlerEvent::Custom(NotifsOutHandlerOut::Closed));
 				},
 			},
 

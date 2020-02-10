@@ -161,7 +161,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static {
 
 	fn inject_fully_negotiated_inbound(
 		&mut self,
-		proto: <Self::InboundProtocol as InboundUpgrade<Negotiated<TSubstream>>>::Output
+		(msg, proto): <Self::InboundProtocol as InboundUpgrade<Negotiated<TSubstream>>>::Output
 	) {
 		if self.substream.is_some() {
 			warn!(

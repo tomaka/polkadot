@@ -58,6 +58,8 @@ pub struct NotificationsIn {
 pub struct NotificationsOut {
 	/// Protocol name to use when negotiating the substream.
 	protocol_name: Cow<'static, [u8]>,
+	/// Message to send when we start the handshake.
+	initial_message: Vec<u8>,
 }
 
 /// A substream for incoming notification messages.
@@ -121,7 +123,7 @@ impl UpgradeInfo for NotificationsIn {
 impl<TSubstream> InboundUpgrade<TSubstream> for NotificationsIn
 where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-	type Output = NotificationsInSubstream<TSubstream>;
+	type Output = (Vec<u8>, NotificationsInSubstream<TSubstream>);
 	type Future = Pin<Box<dyn Future<Output = Result<Self::Output, Self::Error>> + Send>>;
 	type Error = upgrade::ReadOneError;
 
@@ -131,11 +133,25 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 		_: Self::Info,
 	) -> Self::Future {
 		Box::pin(async move {
-			let initial_message = upgrade::read_one(&mut socket, MAX_HANDSHAKE_SIZE).await?;
-			Ok(NotificationsInSubstream {
+			let initial_message_len = read_varint(&mut socket).await?;
+			if initial_message_len > MAX_HANDSHAKE_SIZE {
+				return Err(upgrade::ReadOneError::TooLarge {
+					requested: initial_message_len,
+					max: MAX_HANDSHAKE_SIZE,
+				});
+			}
+
+			let mut initial_message = vec![0u8; initial_message_len];
+			if !initial_message.is_empty() {
+				socket.read(&mut initial_message).await?;
+			}
+
+			let substream = NotificationsInSubstream {
 				socket: Framed::new(socket, UviBytes::default()),
 				handshake: NotificationsInSubstreamHandshake::NotSent,
-			})
+			};
+
+			Ok((initial_message, substream))
 		})
 	}
 }
@@ -144,7 +160,6 @@ impl<TSubstream> NotificationsInSubstream<TSubstream>
 where TSubstream: AsyncRead + AsyncWrite,
 {
 	/// Sends the handshake in order to inform the remote that we accept the substream.
-	// TODO: doesn't seem to work if `message` is empty
 	pub fn send_handshake(&mut self, message: impl Into<Vec<u8>>) {
 		match self.handshake {
 			NotificationsInSubstreamHandshake::NotSent => {}
@@ -199,9 +214,15 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin,
 
 impl NotificationsOut {
 	/// Builds a new potential upgrade.
-	pub fn new(proto_name: impl Into<Cow<'static, [u8]>>) -> Self {
+	pub fn new(proto_name: impl Into<Cow<'static, [u8]>>, initial_message: impl Into<Vec<u8>>) -> Self {
+		let initial_message = initial_message.into();
+		if initial_message.len() > MAX_HANDSHAKE_SIZE {
+			error!(target: "sub-libp2p", "Outbound networking handshake is above allowed protocol limit");
+		}
+
 		NotificationsOut {
 			protocol_name: proto_name.into(),
+			initial_message,
 		}
 	}
 }
@@ -225,15 +246,25 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 	fn upgrade_outbound(
 		self,
 		mut socket: TSubstream,
-		proto_name: Self::Info,
+		_: Self::Info,
 	) -> Self::Future {
 		Box::pin(async move {
-			// TODO: debug_assert!(initial_message.len() < MAX_HANDSHAKE_SIZE);
-			upgrade::write_with_len_prefix(&mut socket, &[1, 2, 3, 4]).await?; // TODO: initial message
-			let handshake = upgrade::read_one(&mut socket, MAX_HANDSHAKE_SIZE).await?;
-			if handshake.is_empty() {
-				return Err(From::from(io::Error::from(io::ErrorKind::UnexpectedEof)));
+			upgrade::write_with_len_prefix(&mut socket, &self.initial_message).await?;
+
+			// Reading handshake.
+			let handshake_len = read_varint(&mut socket).await?;
+			if handshake_len > MAX_HANDSHAKE_SIZE {
+				return Err(upgrade::ReadOneError::TooLarge {
+					requested: handshake_len,
+					max: MAX_HANDSHAKE_SIZE,
+				});
 			}
+
+			let mut handshake = vec![0u8; handshake_len];
+			if !handshake.is_empty() {
+				socket.read(&mut handshake).await?;
+			}
+
 			Ok((handshake, NotificationsOutSubstream {
 				socket: Framed::new(socket, UviBytes::default()),
 				messages_queue: VecDeque::new(),
@@ -293,6 +324,33 @@ impl<TSubstream> Sink<VecDeque<u8>> for NotificationsOutSubstream<TSubstream>
 	}
 }
 
+/// Reads a variable-length integer from the `socket`.
+pub async fn read_varint(socket: &mut (impl AsyncRead + Unpin)) -> Result<usize, io::Error> {
+	let mut buffer = unsigned_varint::encode::usize_buffer();
+	let mut buffer_len = 0;
+
+	loop {
+		match socket.read(&mut buffer[buffer_len..buffer_len+1]).await? {
+			0 => return Err(io::ErrorKind::UnexpectedEof.into()),
+			n => debug_assert_eq!(n, 1),
+		}
+
+		buffer_len += 1;
+
+		match unsigned_varint::decode::usize(&buffer[..buffer_len]) {
+			Ok((len, _)) => return Ok(len),
+			Err(unsigned_varint::decode::Error::Overflow) => {
+				return Err(io::Error::new(
+					io::ErrorKind::InvalidData,
+					"overflow in variable-length integer"
+				));
+			}
+			// Not enough data. Looping again.
+			Err(_) => {}
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::{NotificationsIn, NotificationsOut};
@@ -307,11 +365,11 @@ mod tests {
 		const PROTO_NAME: &'static [u8] = b"/test/proto/1";
 		let (listener_addr_tx, listener_addr_rx) = oneshot::channel();
 
-		let server = async_std::task::spawn(async move {
+		let client = async_std::task::spawn(async move {
 			let socket = TcpStream::connect(listener_addr_rx.await.unwrap()).await.unwrap();
 			let (handshake, mut substream) = upgrade::apply_outbound(
 				socket,
-				NotificationsOut::new(PROTO_NAME),
+				NotificationsOut::new(PROTO_NAME, &b"initial message"[..]),
 				upgrade::Version::V1
 			).await.unwrap();
 
@@ -324,18 +382,19 @@ mod tests {
 			listener_addr_tx.send(listener.local_addr().unwrap()).unwrap();
 
 			let (socket, _) = listener.accept().await.unwrap();
-			let mut substream = upgrade::apply_inbound(
+			let (initial_message, mut substream) = upgrade::apply_inbound(
 				socket,
 				NotificationsIn::new(PROTO_NAME)
 			).await.unwrap();
 
+			assert_eq!(initial_message, b"initial message");
 			substream.send_handshake(&b"hello world"[..]);
 
 			let msg = substream.next().await.unwrap().unwrap();
 			assert_eq!(msg.as_ref(), b"test message");
 		});
 
-		async_std::task::block_on(server);
+		async_std::task::block_on(client);
 	}
 
 	#[test]
@@ -343,11 +402,11 @@ mod tests {
 		const PROTO_NAME: &'static [u8] = b"/test/proto/1";
 		let (listener_addr_tx, listener_addr_rx) = oneshot::channel();
 
-		let server = async_std::task::spawn(async move {
+		let client = async_std::task::spawn(async move {
 			let socket = TcpStream::connect(listener_addr_rx.await.unwrap()).await.unwrap();
 			let outcome = upgrade::apply_outbound(
 				socket,
-				NotificationsOut::new(PROTO_NAME),
+				NotificationsOut::new(PROTO_NAME, &b"hello"[..]),
 				upgrade::Version::V1
 			).await;
 
@@ -362,16 +421,82 @@ mod tests {
 			listener_addr_tx.send(listener.local_addr().unwrap()).unwrap();
 
 			let (socket, _) = listener.accept().await.unwrap();
-			let substream = upgrade::apply_inbound(
+			let (initial_msg, substream) = upgrade::apply_inbound(
 				socket,
 				NotificationsIn::new(PROTO_NAME)
 			).await.unwrap();
+
+			assert_eq!(initial_msg, b"hello");
 
 			// We successfully upgrade to the protocol, but then close the substream.
 			drop(substream);
 		});
 
-		async_std::task::block_on(server);
+		async_std::task::block_on(client);
+	}
+
+	#[test]
+	fn large_initial_message_refused() {
+		const PROTO_NAME: &'static [u8] = b"/test/proto/1";
+		let (listener_addr_tx, listener_addr_rx) = oneshot::channel();
+
+		let client = async_std::task::spawn(async move {
+			let socket = TcpStream::connect(listener_addr_rx.await.unwrap()).await.unwrap();
+			let ret = upgrade::apply_outbound(
+				socket,
+				// We check that an initial message that is too large gets refused.
+				NotificationsOut::new(PROTO_NAME, (0..32768).map(|_| 0).collect::<Vec<_>>()),
+				upgrade::Version::V1
+			).await;
+			assert!(ret.is_err());
+		});
+
+		async_std::task::block_on(async move {
+			let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+			listener_addr_tx.send(listener.local_addr().unwrap()).unwrap();
+
+			let (socket, _) = listener.accept().await.unwrap();
+			let ret = upgrade::apply_inbound(
+				socket,
+				NotificationsIn::new(PROTO_NAME)
+			).await;
+			assert!(ret.is_err());
+		});
+
+		async_std::task::block_on(client);
+	}
+
+	#[test]
+	fn large_handshake_refused() {
+		const PROTO_NAME: &'static [u8] = b"/test/proto/1";
+		let (listener_addr_tx, listener_addr_rx) = oneshot::channel();
+
+		let client = async_std::task::spawn(async move {
+			let socket = TcpStream::connect(listener_addr_rx.await.unwrap()).await.unwrap();
+			let ret = upgrade::apply_outbound(
+				socket,
+				NotificationsOut::new(PROTO_NAME, &b"initial message"[..]),
+				upgrade::Version::V1
+			).await;
+			assert!(ret.is_err());
+		});
+
+		async_std::task::block_on(async move {
+			let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+			listener_addr_tx.send(listener.local_addr().unwrap()).unwrap();
+
+			let (socket, _) = listener.accept().await.unwrap();
+			let (initial_message, mut substream) = upgrade::apply_inbound(
+				socket,
+				NotificationsIn::new(PROTO_NAME)
+			).await.unwrap();
+
+			// We check that a handshake that is too large gets refused.
+			substream.send_handshake((0..32768).map(|_| 0).collect::<Vec<_>>());
+			let _ = substream.next().await;
+		});
+
+		async_std::task::block_on(client);
 	}
 
 	// TODO: more testing around queue of messages and all

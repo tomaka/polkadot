@@ -439,7 +439,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static {
 		for (handler_num, (handler, engine_id)) in self.in_handlers.iter_mut().enumerate() {
 			if let Poll::Ready(ev) = handler.poll(cx) {
 				match ev {
-					ProtocolsHandlerEvent::OutboundSubstreamRequest { protocol, info: () } =>
+					ProtocolsHandlerEvent::OutboundSubstreamRequest { .. } =>
 						error!("Incoming substream handler tried to open a substream"),
 					ProtocolsHandlerEvent::Close(err) => void::unreachable(err),
 					ProtocolsHandlerEvent::Custom(NotifsInHandlerOut::OpenRequest) =>
