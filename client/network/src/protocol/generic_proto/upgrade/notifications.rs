@@ -398,6 +398,45 @@ mod tests {
 	}
 
 	#[test]
+	fn empty_handshake() {
+		// Check that everything still works when the handshake messages are empty.
+
+		const PROTO_NAME: &'static [u8] = b"/test/proto/1";
+		let (listener_addr_tx, listener_addr_rx) = oneshot::channel();
+
+		let client = async_std::task::spawn(async move {
+			let socket = TcpStream::connect(listener_addr_rx.await.unwrap()).await.unwrap();
+			let (handshake, mut substream) = upgrade::apply_outbound(
+				socket,
+				NotificationsOut::new(PROTO_NAME, vec![]),
+				upgrade::Version::V1
+			).await.unwrap();
+
+			assert!(handshake.is_empty());
+			substream.send(Default::default()).await.unwrap();
+		});
+
+		async_std::task::block_on(async move {
+			let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+			listener_addr_tx.send(listener.local_addr().unwrap()).unwrap();
+
+			let (socket, _) = listener.accept().await.unwrap();
+			let (initial_message, mut substream) = upgrade::apply_inbound(
+				socket,
+				NotificationsIn::new(PROTO_NAME)
+			).await.unwrap();
+
+			assert!(initial_message.is_empty());
+			substream.send_handshake(vec![]);
+
+			let msg = substream.next().await.unwrap().unwrap();
+			assert!(msg.as_ref().is_empty());
+		});
+
+		async_std::task::block_on(client);
+	}
+
+	#[test]
 	fn refused() {
 		const PROTO_NAME: &'static [u8] = b"/test/proto/1";
 		let (listener_addr_tx, listener_addr_rx) = oneshot::channel();
@@ -490,6 +529,7 @@ mod tests {
 				socket,
 				NotificationsIn::new(PROTO_NAME)
 			).await.unwrap();
+			assert_eq!(initial_message, b"initial message");
 
 			// We check that a handshake that is too large gets refused.
 			substream.send_handshake((0..32768).map(|_| 0).collect::<Vec<_>>());

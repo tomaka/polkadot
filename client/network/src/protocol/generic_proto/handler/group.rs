@@ -316,7 +316,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static {
 					});
 				}
 				for num in self.pending_in.drain(..) {
-					self.in_handlers[num].0.inject_event(NotifsInHandlerIn::Accept(vec![1]));		// TODO: handshake message
+					self.in_handlers[num].0.inject_event(NotifsInHandlerIn::Accept(vec![]));
 				}
 			},
 			NotifsHandlerIn::Disable => {
