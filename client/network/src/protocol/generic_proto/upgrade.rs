@@ -27,9 +27,7 @@ pub use self::notifications::{
 	NotificationsOut,
 	NotificationsOutSubstream
 };
-pub use self::select::SelectUpgrade;
 
 mod collec;
 mod legacy;
 mod notifications;
-mod select;

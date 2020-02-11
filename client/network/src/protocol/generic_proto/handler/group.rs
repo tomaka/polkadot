@@ -49,7 +49,7 @@ use crate::protocol::generic_proto::{
 	handler::legacy::{LegacyProtoHandler, LegacyProtoHandlerProto, LegacyProtoHandlerIn, LegacyProtoHandlerOut},
 	handler::notif_in::{NotifsInHandlerProto, NotifsInHandler, NotifsInHandlerIn, NotifsInHandlerOut},
 	handler::notif_out::{NotifsOutHandlerProto, NotifsOutHandler, NotifsOutHandlerIn, NotifsOutHandlerOut},
-	upgrade::{NotificationsIn, NotificationsOut, RegisteredProtocol, SelectUpgrade, UpgradeCollec},
+	upgrade::{NotificationsIn, NotificationsOut, RegisteredProtocol, UpgradeCollec},
 };
 use crate::protocol::message::generic::{Message as GenericMessage, ConsensusMessage};
 
@@ -57,7 +57,7 @@ use bytes::BytesMut;
 use codec::Encode as _;
 use futures::prelude::*;
 use libp2p::core::{either::{EitherError, EitherOutput}, ConnectedPoint, Negotiated, PeerId};
-use libp2p::core::upgrade::{EitherUpgrade, ReadOneError, UpgradeError, InboundUpgrade, OutboundUpgrade};
+use libp2p::core::upgrade::{EitherUpgrade, ReadOneError, UpgradeError, SelectUpgrade, InboundUpgrade, OutboundUpgrade};
 use libp2p::swarm::{
 	ProtocolsHandler, ProtocolsHandlerEvent,
 	IntoProtocolsHandler,
@@ -442,11 +442,11 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static {
 					ProtocolsHandlerEvent::OutboundSubstreamRequest { .. } =>
 						error!("Incoming substream handler tried to open a substream"),
 					ProtocolsHandlerEvent::Close(err) => void::unreachable(err),
-					ProtocolsHandlerEvent::Custom(NotifsInHandlerOut::OpenRequest) =>
+					ProtocolsHandlerEvent::Custom(NotifsInHandlerOut::OpenRequest(_)) =>
 						match self.enabled {
 							EnabledState::Initial => self.pending_in.push(handler_num),
 							EnabledState::Enabled =>
-								handler.inject_event(NotifsInHandlerIn::Accept(vec![1])),		// TODO: message
+								handler.inject_event(NotifsInHandlerIn::Accept(vec![])),
 							EnabledState::Disabled =>
 								handler.inject_event(NotifsInHandlerIn::Refuse),
 						},

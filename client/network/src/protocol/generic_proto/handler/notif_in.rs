@@ -90,11 +90,12 @@ pub enum NotifsInHandlerIn {
 /// Event that can be emitted by a `NotifsInHandler`.
 #[derive(Debug)]
 pub enum NotifsInHandlerOut {
-	/// The remote wants to open a substream.
+	/// The remote wants to open a substream. Contains the initial message sent by the remote
+	/// when the substream has been opened.
 	///
 	/// Every time this event is emitted, a corresponding `Accepted` or `Refused` **must** be sent
 	/// back even if a `Closed` is received.
-	OpenRequest,
+	OpenRequest(Vec<u8>),
 
 	/// The notifications substream has been closed by the remote. In order to avoid race
 	/// conditions, this does **not** cancel any previously-sent `OpenRequest`.
@@ -173,7 +174,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static {
 		}
 
 		self.substream = Some(proto);
-		self.events_queue.push(ProtocolsHandlerEvent::Custom(NotifsInHandlerOut::OpenRequest));
+		self.events_queue.push(ProtocolsHandlerEvent::Custom(NotifsInHandlerOut::OpenRequest(msg)));
 		self.pending_accept_refuses = self.pending_accept_refuses
 			.checked_add(1)
 			.unwrap_or_else(|| {

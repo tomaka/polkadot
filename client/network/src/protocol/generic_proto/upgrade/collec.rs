@@ -22,7 +22,7 @@ use futures::prelude::*;
 use libp2p::core::upgrade::{InboundUpgrade, ProtocolName, UpgradeInfo};
 use std::{iter::FromIterator, pin::Pin, task::{Context, Poll}, vec};
 
-// TODO: move this to libp2p
+// TODO: move this to libp2p => https://github.com/libp2p/rust-libp2p/issues/1445
 
 /// Upgrade that combines multiple upgrades of the same type into one. Supports all the protocols
 /// supported by either sub-upgrade.
