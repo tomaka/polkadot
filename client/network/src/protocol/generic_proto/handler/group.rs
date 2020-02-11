@@ -311,7 +311,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static {
 				self.enabled = EnabledState::Enabled;
 				self.legacy.inject_event(LegacyProtoHandlerIn::Enable);
 				for (handler, _) in &mut self.out_handlers {
-					handler.inject_event(NotifsOutHandlerIn::Enable);
+					handler.inject_event(NotifsOutHandlerIn::Enable {
+						initial_message: vec![]
+					});
 				}
 				for num in self.pending_in.drain(..) {
 					self.in_handlers[num].0.inject_event(NotifsInHandlerIn::Accept(vec![1]));		// TODO: handshake message
