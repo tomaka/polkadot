@@ -454,6 +454,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static {
 						},
 					ProtocolsHandlerEvent::Custom(NotifsInHandlerOut::Closed) => {},
 					ProtocolsHandlerEvent::Custom(NotifsInHandlerOut::Notif(message)) => {
+						// TODO: debug_assert that we are open with them
 						let msg = NotifsHandlerOut::Notification {
 							message,
 							engine_id: *engine_id,
