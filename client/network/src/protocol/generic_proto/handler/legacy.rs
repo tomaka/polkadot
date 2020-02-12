@@ -261,6 +261,18 @@ impl<TSubstream> LegacyProtoHandler<TSubstream>
 where
 	TSubstream: AsyncRead + AsyncWrite + Unpin,
 {
+	/// Returns true if the legacy substream is currently open.
+	pub fn is_open(&self) -> bool {
+		match &self.state {
+			ProtocolState::Init { substreams, .. } => !substreams.is_empty(),
+			ProtocolState::Opening { .. } => false,
+			ProtocolState::Normal { substreams, .. } => !substreams.is_empty(),
+			ProtocolState::Disabled { .. } => false,
+			ProtocolState::KillAsap => false,
+			ProtocolState::Poisoned => false,
+		}
+	}
+
 	/// Enables the handler.
 	fn enable(&mut self) {
 		self.state = match mem::replace(&mut self.state, ProtocolState::Poisoned) {

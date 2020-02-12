@@ -439,7 +439,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static {
 		ProtocolsHandlerEvent<Self::OutboundProtocol, Self::OutboundOpenInfo, Self::OutEvent, Self::Error>
 	> {
 		for (handler_num, (handler, engine_id)) in self.in_handlers.iter_mut().enumerate() {
-			if let Poll::Ready(ev) = handler.poll(cx) {
+			while let Poll::Ready(ev) = handler.poll(cx) {
 				match ev {
 					ProtocolsHandlerEvent::OutboundSubstreamRequest { .. } =>
 						error!("Incoming substream handler tried to open a substream"),
@@ -454,20 +454,23 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static {
 						},
 					ProtocolsHandlerEvent::Custom(NotifsInHandlerOut::Closed) => {},
 					ProtocolsHandlerEvent::Custom(NotifsInHandlerOut::Notif(message)) => {
-						// TODO: debug_assert that we are open with them
-						let msg = NotifsHandlerOut::Notification {
-							message,
-							engine_id: *engine_id,
-							proto_name: handler.protocol_name().to_owned().into(),
-						};
-						return Poll::Ready(ProtocolsHandlerEvent::Custom(msg));
+						// Note that right now the legacy substream has precedence over
+						// everything. If it is not open, then we consider that nothing is open.
+						if self.legacy.is_open() {
+							let msg = NotifsHandlerOut::Notification {
+								message,
+								engine_id: *engine_id,
+								proto_name: handler.protocol_name().to_owned().into(),
+							};
+							return Poll::Ready(ProtocolsHandlerEvent::Custom(msg));
+						}
 					},
 				}
 			}
 		}
 
 		for (handler_num, (handler, _)) in self.out_handlers.iter_mut().enumerate() {
-			if let Poll::Ready(ev) = handler.poll(cx) {
+			while let Poll::Ready(ev) = handler.poll(cx) {
 				match ev {
 					ProtocolsHandlerEvent::OutboundSubstreamRequest { protocol, info: () } =>
 						return Poll::Ready(ProtocolsHandlerEvent::OutboundSubstreamRequest {
@@ -489,7 +492,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static {
 			}
 		}
 
-		if let Poll::Ready(ev) = self.legacy.poll(cx) {
+		while let Poll::Ready(ev) = self.legacy.poll(cx) {
 			match ev {
 				ProtocolsHandlerEvent::OutboundSubstreamRequest { protocol, info: () } =>
 					return Poll::Ready(ProtocolsHandlerEvent::OutboundSubstreamRequest {
