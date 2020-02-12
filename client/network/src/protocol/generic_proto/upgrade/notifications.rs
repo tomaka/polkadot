@@ -72,7 +72,7 @@ pub struct NotificationsOut {
 #[pin_project::pin_project]
 pub struct NotificationsInSubstream<TSubstream> {
 	#[pin]
-	socket: Framed<TSubstream, UviBytes<VecDeque<u8>>>,
+	socket: Framed<TSubstream, UviBytes<io::Cursor<Vec<u8>>>>,
 	handshake: NotificationsInSubstreamHandshake,
 }
 
@@ -93,9 +93,9 @@ enum NotificationsInSubstreamHandshake {
 pub struct NotificationsOutSubstream<TSubstream> {
 	/// Substream where to send messages.
 	#[pin]
-	socket: Framed<TSubstream, UviBytes<VecDeque<u8>>>,
+	socket: Framed<TSubstream, UviBytes<io::Cursor<Vec<u8>>>>,
 	/// Queue of messages waiting to be sent.
-	messages_queue: VecDeque<VecDeque<u8>>,
+	messages_queue: VecDeque<Vec<u8>>,
 	/// If true, we need to flush `socket`.
 	need_flush: bool,
 }
@@ -195,7 +195,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin,
 					match Sink::poll_ready(this.socket.as_mut(), cx) {
 						Poll::Ready(_) => {
 							*this.handshake = NotificationsInSubstreamHandshake::Close;
-							match Sink::start_send(this.socket.as_mut(), msg.into_iter().collect()) { // TODO: cloning
+							match Sink::start_send(this.socket.as_mut(), io::Cursor::new(msg)) {
 								Ok(()) => {},
 								Err(err) => return Poll::Ready(Some(Err(err))),
 							}
@@ -277,7 +277,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 	}
 }
 
-impl<TSubstream> Sink<VecDeque<u8>> for NotificationsOutSubstream<TSubstream>
+impl<TSubstream> Sink<Vec<u8>> for NotificationsOutSubstream<TSubstream>
 	where TSubstream: AsyncRead + AsyncWrite + Unpin,
 {
 	type Error = NotificationsOutError;
@@ -286,7 +286,7 @@ impl<TSubstream> Sink<VecDeque<u8>> for NotificationsOutSubstream<TSubstream>
 		Poll::Ready(Ok(()))
 	}
 
-	fn start_send(mut self: Pin<&mut Self>, item: VecDeque<u8>) -> Result<(), Self::Error> {
+	fn start_send(mut self: Pin<&mut Self>, item: Vec<u8>) -> Result<(), Self::Error> {
 		if self.messages_queue.len() >= MAX_PENDING_MESSAGES {
 			return Err(NotificationsOutError::Clogged);
 		}
@@ -304,7 +304,7 @@ impl<TSubstream> Sink<VecDeque<u8>> for NotificationsOutSubstream<TSubstream>
 				Poll::Ready(Ok(())) => {
 					let msg = this.messages_queue.pop_front()
 						.expect("checked for !is_empty above; qed");
-					Sink::start_send(this.socket.as_mut(), msg)?;
+					Sink::start_send(this.socket.as_mut(), io::Cursor::new(msg))?;
 					*this.need_flush = true;
 				},
 				Poll::Pending => return Poll::Pending,
@@ -381,7 +381,7 @@ mod tests {
 	use async_std::net::{TcpListener, TcpStream};
 	use futures::{prelude::*, channel::oneshot};
 	use libp2p::core::upgrade;
-	use std::{collections::VecDeque, pin::Pin};
+	use std::pin::Pin;
 
 	#[test]
 	fn basic_works() {
@@ -397,7 +397,7 @@ mod tests {
 			).await.unwrap();
 
 			assert_eq!(handshake, b"hello world");
-			substream.send(b"test message".iter().cloned().collect::<VecDeque<_>>()).await.unwrap();
+			substream.send(b"test message".to_vec()).await.unwrap();
 		});
 
 		async_std::task::block_on(async move {
@@ -578,12 +578,12 @@ mod tests {
 			assert!(handshake.is_empty());
 
 			// Push an item and flush so that the test works.
-			substream.send(b"hello world".iter().cloned().collect()).await.unwrap();
+			substream.send(b"hello world".to_vec()).await.unwrap();
 
 			for _ in 0..32768 {
 				// Push an item on the sink without flushing until an error happens because the
 				// buffer is full.
-				let message = b"hello world!".iter().cloned().collect();
+				let message = b"hello world!".to_vec();
 				if future::poll_fn(|cx| Sink::poll_ready(Pin::new(&mut substream), cx)).await.is_err() {
 					return Ok(());
 				}

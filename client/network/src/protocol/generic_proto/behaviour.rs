@@ -228,6 +228,8 @@ pub enum GenericProtoOut {
 	},
 
 	/// Receives a message on a custom protocol substream.
+	///
+	/// Also concerns received notifications for the notifications API.
 	CustomMessage {
 		/// Id of the peer the message came from.
 		peer_id: PeerId,
@@ -987,7 +989,6 @@ where
 			}
 
 			NotifsHandlerOut::Notification { proto_name, engine_id, message } => {
-				// TODO: implement properly
 				debug_assert!(self.is_open(&source));
 				trace!(
 					target: "sub-libp2p",
@@ -1003,7 +1004,8 @@ where
 							engine_id,
 							data: message.to_vec(),
 						});
-						// TODO: we clone the message here
+
+						// Note that we clone `message` here.
 						From::from(&message.encode()[..])
 					},
 				};

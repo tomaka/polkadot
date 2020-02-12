@@ -307,8 +307,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static {
 
 			NotifsOutHandlerIn::Send(msg) =>
 				if let State::Open { substream, .. } = &mut self.state {
-					// TODO: we clone the message here :(
-					if let Some(Ok(_)) = substream.send(msg.into_iter().collect()).now_or_never() {
+					if let Some(Ok(_)) = substream.send(msg).now_or_never() {
 					} else {
 						log::warn!(
 							target: "sub-libp2p",
