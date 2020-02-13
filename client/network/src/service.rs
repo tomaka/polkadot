@@ -840,7 +840,6 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, H: ExHashT> Unpin for Net
 
 /// The libp2p swarm, customized for our needs.
 type Swarm<B, S, H> = libp2p::swarm::Swarm<
-	Boxed<(PeerId, StreamMuxerBox), io::Error>,
 	Behaviour<B, S, H>
 >;
 

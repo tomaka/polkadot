@@ -59,7 +59,7 @@ use std::task::{Context, Poll};
 /// Note that this "banning" system is not an actual ban. If a "banned" node tries to connect to
 /// us, we accept the connection. The "banning" system is only about delaying dialing attempts.
 ///
-pub struct LegacyProto< TSubstream> {
+pub struct LegacyProto {
 	/// List of protocols to open with peers. Never modified.
 	protocol: RegisteredProtocol,
 
@@ -79,9 +79,6 @@ pub struct LegacyProto< TSubstream> {
 
 	/// Events to produce from `poll()`.
 	events: SmallVec<[NetworkBehaviourAction<CustomProtoHandlerIn, LegacyProtoOut>; 4]>,
-
-	/// Marker to pin the generics.
-	marker: PhantomData<TSubstream>,
 }
 
 /// State of a peer we're connected to.
@@ -224,7 +221,7 @@ pub enum LegacyProtoOut {
 	},
 }
 
-impl<TSubstream> LegacyProto<TSubstream> {
+impl LegacyProto {
 	/// Creates a `CustomProtos`.
 	pub fn new(
 		protocol: impl Into<ProtocolId>,
@@ -240,7 +237,6 @@ impl<TSubstream> LegacyProto<TSubstream> {
 			incoming: SmallVec::new(),
 			next_incoming_index: sc_peerset::IncomingIndex(0),
 			events: SmallVec::new(),
-			marker: PhantomData,
 		}
 	}
 
@@ -604,7 +600,7 @@ impl<TSubstream> LegacyProto<TSubstream> {
 	}
 }
 
-impl<TSubstream> DiscoveryNetBehaviour for LegacyProto<TSubstream> {
+impl DiscoveryNetBehaviour for LegacyProto {
 	fn add_discovered_nodes(&mut self, peer_ids: impl Iterator<Item = PeerId>) {
 		self.peerset.discovered(peer_ids.into_iter().map(|peer_id| {
 			debug!(target: "sub-libp2p", "PSM <= Discovered({:?})", peer_id);
@@ -613,11 +609,9 @@ impl<TSubstream> DiscoveryNetBehaviour for LegacyProto<TSubstream> {
 	}
 }
 
-impl<TSubstream> NetworkBehaviour for LegacyProto<TSubstream>
-where
-	TSubstream: AsyncRead + AsyncWrite + Unpin,
+impl NetworkBehaviour for LegacyProto
 {
-	type ProtocolsHandler = CustomProtoHandlerProto<TSubstream>;
+	type ProtocolsHandler = CustomProtoHandlerProto;
 	type OutEvent = LegacyProtoOut;
 
 	fn new_handler(&mut self) -> Self::ProtocolsHandler {

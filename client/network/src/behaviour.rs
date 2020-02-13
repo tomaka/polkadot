@@ -23,7 +23,7 @@ use crate::protocol::{CustomMessageOutcome, Protocol};
 use libp2p::NetworkBehaviour;
 use libp2p::core::{Multiaddr, PeerId, PublicKey};
 use libp2p::kad::record;
-use libp2p::swarm::{NetworkBehaviourAction, NetworkBehaviourEventProcess};
+use libp2p::swarm::{NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters};
 use libp2p::core::{nodes::Substream, muxing::StreamMuxerBox};
 use log::debug;
 use sp_consensus::{BlockOrigin, import_queue::{IncomingBlock, Origin}};
@@ -39,9 +39,9 @@ pub struct Behaviour<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> {
 	substrate: Protocol<B, S, H>,
 	/// Periodically pings and identifies the nodes we are connected to, and store information in a
 	/// cache.
-	debug_info: debug_info::DebugInfoBehaviour<Substream<StreamMuxerBox>>,
+	debug_info: debug_info::DebugInfoBehaviour,
 	/// Discovers nodes of the network.
-	discovery: DiscoveryBehaviour<Substream<StreamMuxerBox>>,
+	discovery: DiscoveryBehaviour,
 
 	/// Queue of events to produce for the outside.
 	#[behaviour(ignore)]
@@ -208,7 +208,7 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> NetworkBehaviourEventPr
 }
 
 impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Behaviour<B, S, H> {
-	fn poll<TEv>(&mut self, _: &mut Context) -> Poll<NetworkBehaviourAction<TEv, BehaviourOut<B>>> {
+	fn poll<TEv>(&mut self, _: &mut Context, _: &mut impl PollParameters) -> Poll<NetworkBehaviourAction<TEv, BehaviourOut<B>>> {
 		if !self.events.is_empty() {
 			return Poll::Ready(NetworkBehaviourAction::GenerateEvent(self.events.remove(0)))
 		}

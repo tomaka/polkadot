@@ -142,7 +142,7 @@ pub struct Protocol<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> {
 	/// When asked for a proof of finality, we use this struct to build one.
 	finality_proof_provider: Option<Arc<dyn FinalityProofProvider<B>>>,
 	/// Handles opening the unique substream and sending and receiving raw messages.
-	behaviour: LegacyProto<Substream<StreamMuxerBox>>,
+	behaviour: LegacyProto,
 	/// List of notification protocols that have been registered.
 	registered_notif_protocols: HashSet<ConsensusEngineId>,
 }
@@ -191,7 +191,7 @@ pub struct PeerInfo<B: BlockT> {
 }
 
 struct LightDispatchIn<'a> {
-	behaviour: &'a mut LegacyProto<Substream<StreamMuxerBox>>,
+	behaviour: &'a mut LegacyProto,
 	peerset: sc_peerset::PeersetHandle,
 }
 
@@ -331,7 +331,7 @@ pub trait Context<B: BlockT> {
 
 /// Protocol context.
 struct ProtocolContext<'a, B: 'a + BlockT, H: 'a + ExHashT> {
-	behaviour: &'a mut LegacyProto<Substream<StreamMuxerBox>>,
+	behaviour: &'a mut LegacyProto,
 	context_data: &'a mut ContextData<B, H>,
 	peerset_handle: &'a sc_peerset::PeersetHandle,
 }
@@ -339,7 +339,7 @@ struct ProtocolContext<'a, B: 'a + BlockT, H: 'a + ExHashT> {
 impl<'a, B: BlockT + 'a, H: 'a + ExHashT> ProtocolContext<'a, B, H> {
 	fn new(
 		context_data: &'a mut ContextData<B, H>,
-		behaviour: &'a mut LegacyProto<Substream<StreamMuxerBox>>,
+		behaviour: &'a mut LegacyProto,
 		peerset_handle: &'a sc_peerset::PeersetHandle,
 	) -> Self {
 		ProtocolContext { context_data, peerset_handle, behaviour }
@@ -897,14 +897,14 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 				if peer.block_request.as_ref().map_or(false, |(t, _)| (tick - *t).as_secs() > REQUEST_TIMEOUT_SEC) {
 					log!(
 						target: "sync",
-						if self.important_peers.contains(&who) { Level::Warn } else { Level::Trace },
+						if self.important_peers.contains(who) { Level::Warn } else { Level::Trace },
 						"Request timeout {}", who
 					);
 					aborting.push(who.clone());
 				} else if peer.obsolete_requests.values().any(|t| (tick - *t).as_secs() > REQUEST_TIMEOUT_SEC) {
 					log!(
 						target: "sync",
-						if self.important_peers.contains(&who) { Level::Warn } else { Level::Trace },
+						if self.important_peers.contains(who) { Level::Warn } else { Level::Trace },
 						"Obsolete timeout {}", who
 					);
 					aborting.push(who.clone());
@@ -915,7 +915,7 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 			{
 				log!(
 					target: "sync",
-					if self.important_peers.contains(&who) { Level::Warn } else { Level::Trace },
+					if self.important_peers.contains(who) { Level::Warn } else { Level::Trace },
 					"Handshake timeout {}", who
 				);
 				aborting.push(who.clone());
@@ -1819,7 +1819,7 @@ pub enum CustomMessageOutcome<B: BlockT> {
 }
 
 fn send_request<B: BlockT, H: ExHashT>(
-	behaviour: &mut LegacyProto<Substream<StreamMuxerBox>>,
+	behaviour: &mut LegacyProto,
 	stats: &mut HashMap<&'static str, PacketStats>,
 	peers: &mut HashMap<PeerId, Peer<B, H>>,
 	who: &PeerId,
@@ -1840,7 +1840,7 @@ fn send_request<B: BlockT, H: ExHashT>(
 }
 
 fn send_message<B: BlockT>(
-	behaviour: &mut LegacyProto<Substream<StreamMuxerBox>>,
+	behaviour: &mut LegacyProto,
 	stats: &mut HashMap<&'static str, PacketStats>,
 	who: &PeerId,
 	message: Message<B>,
@@ -1854,7 +1854,7 @@ fn send_message<B: BlockT>(
 
 impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> NetworkBehaviour for
 Protocol<B, S, H> {
-	type ProtocolsHandler = <LegacyProto<Substream<StreamMuxerBox>> as NetworkBehaviour>::ProtocolsHandler;
+	type ProtocolsHandler = <LegacyProto as NetworkBehaviour>::ProtocolsHandler;
 	type OutEvent = CustomMessageOutcome<B>;
 
 	fn new_handler(&mut self) -> Self::ProtocolsHandler {
