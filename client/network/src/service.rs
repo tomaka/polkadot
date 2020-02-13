@@ -182,7 +182,7 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, H: ExHashT> NetworkWorker
 		let peerset_config = sc_peerset::PeersetConfig {
 			in_peers: params.network_config.in_peers,
 			out_peers: params.network_config.out_peers,
-			bootnodes,
+			bootnodes: Vec::new(),
 			reserved_only: params.network_config.non_reserved_mode == NonReservedPeerMode::Deny,
 			reserved_nodes,
 		};

@@ -147,7 +147,6 @@ impl DiscoveryBehaviour {
 	/// If we didn't know this address before, also generates a `Discovered` event.
 	pub fn add_known_address(&mut self, peer_id: PeerId, addr: Multiaddr) {
 		if self.user_defined.iter().all(|(p, a)| *p != peer_id && *a != addr) {
-			self.discoveries.push_back(peer_id.clone());
 			self.user_defined.push((peer_id, addr));
 		}
 	}
@@ -351,8 +350,10 @@ impl NetworkBehaviour for DiscoveryBehaviour
 						return Poll::Ready(NetworkBehaviourAction::GenerateEvent(ev));
 					}
 					KademliaEvent::RoutingUpdated { peer, .. } => {
-						let ev = DiscoveryOut::Discovered(peer);
-						return Poll::Ready(NetworkBehaviourAction::GenerateEvent(ev));
+						if self.user_defined.iter().all(|(p, _)| *p != peer) {
+							let ev = DiscoveryOut::Discovered(peer);
+							return Poll::Ready(NetworkBehaviourAction::GenerateEvent(ev));
+						}
 					}
 					KademliaEvent::GetClosestPeersResult(res) => {
 						match res {
