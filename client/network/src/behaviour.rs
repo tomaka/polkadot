@@ -115,6 +115,11 @@ impl<B: BlockT, H: ExHashT> Behaviour<B, H> {
 		&mut self.substrate
 	}
 
+	/// Returns the entries in the Kademlia k-buckets.
+	pub fn kbuckets_entries(&mut self) -> impl Iterator<Item = &PeerId> {
+		self.discovery.kbuckets_entries()
+	}
+
 	/// Start querying a record from the DHT. Will later produce either a `ValueFound` or a `ValueNotFound` event.
 	pub fn get_value(&mut self, key: &record::Key) {
 		self.discovery.get_value(key);

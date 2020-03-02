@@ -421,6 +421,7 @@ impl<B: BlockT + 'static, H: ExHashT> NetworkWorker<B, H> {
 			connected_peers,
 			not_connected_peers,
 			peerset: swarm.user_protocol_mut().peerset_debug_info(),
+			kbuckets: swarm.kbuckets_entries().map(|p| p.to_base58()).collect(),
 		}
 	}
 

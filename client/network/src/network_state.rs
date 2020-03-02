@@ -47,6 +47,8 @@ pub struct NetworkState {
 	pub average_upload_per_sec: u64,
 	/// State of the peerset manager.
 	pub peerset: serde_json::Value,
+	/// List of `PeerIds` in the k-buckets of the Kademlia DHT.
+	pub kbuckets: HashSet<String>,
 }
 
 /// Part of the `NetworkState` struct. Unstable.

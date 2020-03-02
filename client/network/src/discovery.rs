@@ -140,6 +140,8 @@ impl DiscoveryBehaviour {
 	/// Returns the list of nodes that we know exist in the network.
 	pub fn known_peers(&mut self) -> impl Iterator<Item = &PeerId> {
 		self.kademlia.kbuckets_entries()
+			.chain(self.user_defined.iter().map(|(p, _)| p))
+		// TODO: add self.mdns.discovered_nodes() after https://github.com/libp2p/rust-libp2p/pull/1480 is published
 	}
 
 	/// Adds a hard-coded address for the given peer, that never expires.
@@ -152,6 +154,13 @@ impl DiscoveryBehaviour {
 			self.discoveries.push_back(peer_id.clone());
 			self.user_defined.push((peer_id, addr));
 		}
+	}
+
+	/// Returns the list of nodes in the Kademlia k-buckets.
+	///
+	/// This is always a subset of what [`DiscoveryBehaviour::known_peers`] returns.
+	pub fn kbuckets_entries(&mut self) -> impl Iterator<Item = &PeerId> {
+		self.kademlia.kbuckets_entries()
 	}
 
 	/// Call this method when a node reports an address for itself.
