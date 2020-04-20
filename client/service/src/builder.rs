@@ -172,7 +172,9 @@ fn new_full_parts<TBl, TRtApi, TExecDisp>(
 	};
 
 	let tasks_builder = {
-		let registry = config.prometheus_config.as_ref().map(|cfg| &cfg.registry);
+		let registry = config.prometheus_config.as_ref().and_then(|cfg|
+			if cfg.enable_service_tasks_metrics { Some(&cfg.registry) } else { None }
+		);
 		TaskManagerBuilder::new(registry)?
 	};
 
@@ -277,7 +279,9 @@ impl ServiceBuilder<(), (), (), (), (), (), (), (), (), (), ()> {
 		TLightBackend<TBl>,
 	>, Error> {
 		let tasks_builder = {
-			let registry = config.prometheus_config.as_ref().map(|cfg| &cfg.registry);
+			let registry = config.prometheus_config.as_ref().and_then(|cfg|
+				if cfg.enable_service_tasks_metrics { Some(&cfg.registry) } else { None }
+			);
 			TaskManagerBuilder::new(registry)?
 		};
 
@@ -937,9 +941,8 @@ ServiceBuilder<
 		}
 
 		// Prometheus metrics.
-		let mut metrics_service = if let Some(PrometheusConfig { port, registry }) = config.prometheus_config.clone() {
+		let mut metrics_service = if let Some(PrometheusConfig { port, registry, .. }) = config.prometheus_config.clone() {
 			// Set static metrics.
-
 
 			let role_bits = match config.role {
 				Role::Full => 1u64,

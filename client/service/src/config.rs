@@ -131,6 +131,9 @@ pub struct PrometheusConfig {
 	pub port: SocketAddr,
 	/// A metrics registry to use. Useful for setting the metric prefix.
 	pub registry: Registry,
+	/// Enable metrics related to profiling the service tasks. Enabling this slows down the node
+	/// a bit. Enabled by default.
+	pub enable_service_tasks_metrics: bool,
 }
 
 impl PrometheusConfig {
@@ -141,7 +144,8 @@ impl PrometheusConfig {
 		Self {
 			port,
 			registry: Registry::new_custom(Some("substrate".into()), None)
-				.expect("this can only fail if the prefix is empty")
+				.expect("this can only fail if the prefix is empty"),
+			enable_service_tasks_metrics: true,
 		}
 	}
 }

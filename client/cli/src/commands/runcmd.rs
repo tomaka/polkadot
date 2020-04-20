@@ -144,6 +144,12 @@ pub struct RunCmd {
 	#[structopt(long = "no-prometheus")]
 	pub no_prometheus: bool,
 
+	/// Do not report CPU usage of service tasks to the Prometheus metric endpoint.
+	///
+	/// Enabling this option can slightly speed up the node, but also discards useful information.
+	#[structopt(long = "no-service-tasks-metrics")]
+	pub no_service_tasks_metrics: bool,
+
 	/// The human-readable name for this node.
 	///
 	/// The node name will be reported to the telemetry server, if enabled.
@@ -370,12 +376,15 @@ impl CliConfiguration for RunCmd {
 				"127.0.0.1"
 			};
 
-			Ok(Some(PrometheusConfig::new_with_default_registry(
+			let mut cfg = PrometheusConfig::new_with_default_registry(
 				parse_address(
 					&format!("{}:{}", prometheus_interface, 9615),
 					self.prometheus_port,
 				)?,
-			)))
+			);
+
+			cfg.enable_service_tasks_metrics = !self.no_service_tasks_metrics;
+			Ok(Some(cfg))
 		}
 	}
 
