@@ -68,6 +68,12 @@ version = "0.18.1"
 default-features = false
 features = ["websocket", "kad", "mdns", "ping", "identify", "mplex", "yamux", "noise"]
 
+# Needs to be imported separately in order to enable the `tokio` feature.
+[dependencies.libp2p-tcp]
+version = "0.18.0"
+default-features = false
+features = ["tokio"]
+
 [dev-dependencies]
 async-std = "1.5"
 assert_matches = "1.3"

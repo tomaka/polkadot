@@ -2935,6 +2935,7 @@ dependencies = [
  "ipnet",
  "libp2p-core",
  "log",
+ "tokio 0.2.18",
 ]
 
 [[package]]
@@ -6428,6 +6429,7 @@ dependencies = [
  "hex",
  "ip_network",
  "libp2p",
+ "libp2p-tcp",
  "linked-hash-map",
  "linked_hash_set",
  "log",
