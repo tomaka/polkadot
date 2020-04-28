@@ -46,7 +46,7 @@ use sp_runtime::traits::{
 use sp_arithmetic::traits::SaturatedConversion;
 use message::{BlockAnnounce, Message};
 use message::generic::{Message as GenericMessage, ConsensusMessage, Roles};
-use prometheus_endpoint::{Registry, Gauge, GaugeVec, HistogramVec, PrometheusError, Opts, register, U64};
+use prometheus_endpoint::{Registry, Gauge, GaugeVec, HistogramVec, HistogramOpts, PrometheusError, Opts, register, U64};
 use sync::{ChainSync, SyncState};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -152,6 +152,7 @@ struct Metrics {
 	fork_targets: Gauge<U64>,
 	finality_proofs: GaugeVec<U64>,
 	justifications: GaugeVec<U64>,
+	bench2: HistogramVec,
 }
 
 impl Metrics {
@@ -197,6 +198,17 @@ impl Metrics {
 				)?;
 				register(g, r)?
 			},
+			bench2: register(HistogramVec::new(
+				HistogramOpts {
+					common_opts: Opts::new(
+						"benchmark_temporary_2",
+						"No description lol"
+					),
+					buckets: prometheus_endpoint::exponential_buckets(0.001, 2.0, 16)
+						.expect("parameters are always valid values; qed"),
+				},
+				&["name"]
+			)?, r)?,
 		})
 	}
 }
@@ -1951,14 +1963,22 @@ impl<B: BlockT, H: ExHashT> NetworkBehaviour for Protocol<B, H> {
 			return Poll::Ready(NetworkBehaviourAction::GenerateEvent(message));
 		}
 
+		let _tick_timer = self.metrics.as_ref()
+			.map(|m| m.bench2.with_label_values(&["tick"]).start_timer());
 		while let Poll::Ready(Some(())) = self.tick_timeout.poll_next_unpin(cx) {
 			self.tick();
 		}
+		drop(_tick_timer);
 
+		let _propagate_timer = self.metrics.as_ref()
+			.map(|m| m.bench2.with_label_values(&["propagate-extrinsics"]).start_timer());
 		while let Poll::Ready(Some(())) = self.propagate_timeout.poll_next_unpin(cx) {
 			self.propagate_extrinsics();
 		}
+		drop(_propagate_timer);
 
+		let _sync_block_rqs_timer = self.metrics.as_ref()
+			.map(|m| m.bench2.with_label_values(&["sync-block-requests"]).start_timer());
 		for (id, r) in self.sync.block_requests() {
 			if self.use_new_block_requests_protocol {
 				let event = CustomMessageOutcome::BlockRequest {
@@ -1976,6 +1996,9 @@ impl<B: BlockT, H: ExHashT> NetworkBehaviour for Protocol<B, H> {
 				)
 			}
 		}
+		drop(_sync_block_rqs_timer);
+		let _sync_just_rqs_timer = self.metrics.as_ref()
+			.map(|m| m.bench2.with_label_values(&["sync-justification-requests"]).start_timer());
 		for (id, r) in self.sync.justification_requests() {
 			if self.use_new_block_requests_protocol {
 				let event = CustomMessageOutcome::BlockRequest {
@@ -1993,6 +2016,9 @@ impl<B: BlockT, H: ExHashT> NetworkBehaviour for Protocol<B, H> {
 				)
 			}
 		}
+		drop(_sync_just_rqs_timer);
+		let _sync_fp_rqs_timer = self.metrics.as_ref()
+			.map(|m| m.bench2.with_label_values(&["sync-finality-proof-requests"]).start_timer());
 		for (id, r) in self.sync.finality_proof_requests() {
 			if self.use_new_block_requests_protocol {
 				let event = CustomMessageOutcome::FinalityProofRequest {
@@ -2010,7 +2036,10 @@ impl<B: BlockT, H: ExHashT> NetworkBehaviour for Protocol<B, H> {
 					GenericMessage::FinalityProofRequest(r))
 			}
 		}
+		drop(_sync_fp_rqs_timer);
 
+		let _inner_libp2p_timer = self.metrics.as_ref()
+			.map(|m| m.bench2.with_label_values(&["libp2p"]).start_timer());
 		let event = match self.behaviour.poll(cx, params) {
 			Poll::Pending => return Poll::Pending,
 			Poll::Ready(NetworkBehaviourAction::GenerateEvent(ev)) => ev,
@@ -2023,7 +2052,10 @@ impl<B: BlockT, H: ExHashT> NetworkBehaviour for Protocol<B, H> {
 			Poll::Ready(NetworkBehaviourAction::ReportObservedAddr { address }) =>
 				return Poll::Ready(NetworkBehaviourAction::ReportObservedAddr { address }),
 		};
+		drop(_inner_libp2p_timer);
 
+		let _process_inner_libp2p_timer = self.metrics.as_ref()
+			.map(|m| m.bench2.with_label_values(&["process-libp2p-outcome"]).start_timer());
 		let outcome = match event {
 			GenericProtoOut::CustomProtocolOpen { peer_id, .. } => {
 				self.on_peer_connected(peer_id.clone());
@@ -2075,6 +2107,7 @@ impl<B: BlockT, H: ExHashT> NetworkBehaviour for Protocol<B, H> {
 				CustomMessageOutcome::None
 			}
 		};
+		drop(_process_inner_libp2p_timer);
 
 		if let CustomMessageOutcome::None = outcome {
 			Poll::Pending

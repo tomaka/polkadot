@@ -817,6 +817,7 @@ struct Metrics {
 	peerset_num_requested: Gauge<U64>,
 	pending_connections: Gauge<U64>,
 	pending_connections_errors_total: CounterVec<U64>,
+	bench: HistogramVec,
 }
 
 impl Metrics {
@@ -965,6 +966,17 @@ impl Metrics {
 				),
 				&["reason"]
 			)?, registry)?,
+			bench: register(HistogramVec::new(
+				HistogramOpts {
+					common_opts: Opts::new(
+						"benchmark_temporary",
+						"No description lol"
+					),
+					buckets: prometheus_endpoint::exponential_buckets(0.001, 2.0, 16)
+						.expect("parameters are always valid values; qed"),
+				},
+				&["name"]
+			)?, registry)?,
 		})
 	}
 
@@ -997,11 +1009,16 @@ impl<B: BlockT + 'static, H: ExHashT> Future for NetworkWorker<B, H> {
 		let this = &mut *self;
 
 		// Poll the import queue for actions to perform.
+		let _polling_import_queue_timer = this.metrics.as_ref()
+			.map(|m| m.bench.with_label_values(&["import-queue-poll"]).start_timer());
 		this.import_queue.poll_actions(cx, &mut NetworkLink {
 			protocol: &mut this.network_service,
 		});
+		drop(_polling_import_queue_timer);
 
 		// Check for new incoming light client requests.
+		let _light_client_in_timer = this.metrics.as_ref()
+			.map(|m| m.bench.with_label_values(&["incoming-light-client-requests"]).start_timer());
 		if let Some(light_client_rqs) = this.light_client_rqs.as_mut() {
 			while let Poll::Ready(Some(rq)) = light_client_rqs.poll_next_unpin(cx) {
 				// This can error if there are too many queued requests already.
@@ -1013,7 +1030,10 @@ impl<B: BlockT + 'static, H: ExHashT> Future for NetworkWorker<B, H> {
 				}
 			}
 		}
+		drop(_light_client_in_timer);
 
+		let _from_service_msg_timer = this.metrics.as_ref()
+			.map(|m| m.bench.with_label_values(&["from-service-messages"]).start_timer());
 		loop {
 			// Process the next message coming from the `NetworkService`.
 			let msg = match this.from_worker.poll_next_unpin(cx) {
@@ -1057,7 +1077,10 @@ impl<B: BlockT + 'static, H: ExHashT> Future for NetworkWorker<B, H> {
 					this.network_service.user_protocol_mut().disconnect_peer(&who),
 			}
 		}
+		drop(_from_service_msg_timer);
 
+		let _poll_swarm_timer = this.metrics.as_ref()
+			.map(|m| m.bench.with_label_values(&["swarm"]).start_timer());
 		loop {
 			// Process the next action coming from the network.
 			let next_event = this.network_service.next_event();
@@ -1222,6 +1245,7 @@ impl<B: BlockT + 'static, H: ExHashT> Future for NetworkWorker<B, H> {
 				},
 			};
 		}
+		drop(_poll_swarm_timer);
 
 		let num_connected_peers = this.network_service.user_protocol_mut().num_connected_peers();
 
