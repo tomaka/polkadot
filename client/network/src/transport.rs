@@ -38,7 +38,7 @@ pub fn build_transport(
 	memory_only: bool,
 	wasm_external_transport: Option<wasm_ext::ExtTransport>,
 	use_yamux_flow_control: bool
-) -> (Boxed<(PeerId, StreamMuxerBox), io::Error>, Arc<bandwidth::BandwidthSinks>) {
+) -> Boxed<(PeerId, StreamMuxerBox), io::Error> {
 	// Build configuration objects for encryption mechanisms.
 	let noise_config = {
 		let noise_keypair = noise::Keypair::new().into_authentic(&keypair)
@@ -91,8 +91,6 @@ pub fn build_transport(
 		OptionalTransport::none()
 	});
 
-	let (transport, sinks) = bandwidth::BandwidthLogging::new(transport, Duration::from_secs(5));
-
 	// Encryption
 	let transport = transport.and_then(move |stream, endpoint| {
 		core::upgrade::apply(stream, noise_config, endpoint, upgrade::Version::V1)
@@ -121,5 +119,5 @@ pub fn build_transport(
 			.map_err(|err| io::Error::new(io::ErrorKind::Other, err))
 			.boxed();
 
-	(transport, sinks)
+	transport
 }

@@ -84,8 +84,6 @@ pub struct NetworkService<B: BlockT + 'static, H: ExHashT> {
 	is_major_syncing: Arc<AtomicBool>,
 	/// Local copy of the `PeerId` of the local node.
 	local_peer_id: PeerId,
-	/// Bandwidth logging system. Can be queried to know the average bandwidth consumed.
-	bandwidth: Arc<transport::BandwidthSinks>,
 	/// Peerset manager (PSM); manages the reputation of nodes and indicates the network which
 	/// nodes it should be connected to or not.
 	peerset: PeersetHandle,
@@ -216,7 +214,7 @@ impl<B: BlockT + 'static, H: ExHashT> NetworkWorker<B, H> {
 		)?;
 
 		// Build the swarm.
-		let (mut swarm, bandwidth): (Swarm<B, H>, _) = {
+		let mut swarm: Swarm<B, H> = {
 			let user_agent = format!(
 				"{} ({})",
 				params.network_config.client_version,
@@ -275,7 +273,7 @@ impl<B: BlockT + 'static, H: ExHashT> NetworkWorker<B, H> {
 			for (engine_id, protocol_name) in &params.network_config.notifications_protocols {
 				behaviour.register_notifications_protocol(*engine_id, protocol_name.clone());
 			}
-			let (transport, bandwidth) = {
+			let transport = {
 				let (config_mem, config_wasm, flowctrl) = match params.network_config.transport {
 					TransportConfig::MemoryOnly => (true, None, false),
 					TransportConfig::Normal { wasm_external_transport, use_yamux_flow_control, .. } =>
@@ -294,7 +292,7 @@ impl<B: BlockT + 'static, H: ExHashT> NetworkWorker<B, H> {
 				}
 				builder = builder.executor(Box::new(SpawnImpl(spawner)));
 			}
-			(builder.build(), bandwidth)
+			builder.build()
 		};
 
 		// Listen on multiaddresses.
@@ -312,7 +310,6 @@ impl<B: BlockT + 'static, H: ExHashT> NetworkWorker<B, H> {
 		let external_addresses = Arc::new(Mutex::new(Vec::new()));
 
 		let service = Arc::new(NetworkService {
-			bandwidth,
 			external_addresses: external_addresses.clone(),
 			num_connected: num_connected.clone(),
 			is_major_syncing: is_major_syncing.clone(),
@@ -339,12 +336,12 @@ impl<B: BlockT + 'static, H: ExHashT> NetworkWorker<B, H> {
 
 	/// Returns the downloaded bytes per second averaged over the past few seconds.
 	pub fn average_download_per_sec(&self) -> u64 {
-		self.service.bandwidth.average_download_per_sec()
+		0
 	}
 
 	/// Returns the uploaded bytes per second averaged over the past few seconds.
 	pub fn average_upload_per_sec(&self) -> u64 {
-		self.service.bandwidth.average_upload_per_sec()
+		0
 	}
 
 	/// Returns the number of peers we're connected to.
@@ -473,8 +470,8 @@ impl<B: BlockT + 'static, H: ExHashT> NetworkWorker<B, H> {
 			peer_id: Swarm::<B, H>::local_peer_id(&swarm).to_base58(),
 			listened_addresses: Swarm::<B, H>::listeners(&swarm).cloned().collect(),
 			external_addresses: Swarm::<B, H>::external_addresses(&swarm).cloned().collect(),
-			average_download_per_sec: self.service.bandwidth.average_download_per_sec(),
-			average_upload_per_sec: self.service.bandwidth.average_upload_per_sec(),
+			average_download_per_sec: 0,
+			average_upload_per_sec: 0,
 			connected_peers,
 			not_connected_peers,
 			peerset: swarm.user_protocol_mut().peerset_debug_info(),
@@ -1240,8 +1237,8 @@ impl<B: BlockT + 'static, H: ExHashT> Future for NetworkWorker<B, H> {
 		this.is_major_syncing.store(is_major_syncing, Ordering::Relaxed);
 
 		if let Some(metrics) = this.metrics.as_ref() {
-			metrics.network_per_sec_bytes.with_label_values(&["in"]).set(this.service.bandwidth.average_download_per_sec());
-			metrics.network_per_sec_bytes.with_label_values(&["out"]).set(this.service.bandwidth.average_upload_per_sec());
+			metrics.network_per_sec_bytes.with_label_values(&["in"]).set(0);
+			metrics.network_per_sec_bytes.with_label_values(&["out"]).set(0);
 			metrics.is_major_syncing.set(is_major_syncing as u64);
 			for (proto, num_entries) in this.network_service.num_kbuckets_entries() {
 				let proto = maybe_utf8_bytes_to_string(proto.as_bytes());
