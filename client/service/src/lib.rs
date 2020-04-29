@@ -446,6 +446,7 @@ fn build_network_future<
 
 	futures::future::poll_fn(move |cx| {
 		let before_polling = Instant::now();
+		log::trace!(target: "service", "Started polling network future");
 
 		// We poll `imported_blocks_stream`.
 		while let Poll::Ready(Some(notification)) = Pin::new(&mut imported_blocks_stream).poll_next(cx) {

@@ -1951,6 +1951,77 @@ impl<B: BlockT, H: ExHashT> NetworkBehaviour for Protocol<B, H> {
 			return Poll::Ready(NetworkBehaviourAction::GenerateEvent(message));
 		}
 
+		let event = match self.behaviour.poll(cx, params) {
+			Poll::Pending => None,
+			Poll::Ready(NetworkBehaviourAction::GenerateEvent(ev)) => Some(ev),
+			Poll::Ready(NetworkBehaviourAction::DialAddress { address }) =>
+				return Poll::Ready(NetworkBehaviourAction::DialAddress { address }),
+			Poll::Ready(NetworkBehaviourAction::DialPeer { peer_id, condition }) =>
+				return Poll::Ready(NetworkBehaviourAction::DialPeer { peer_id, condition }),
+			Poll::Ready(NetworkBehaviourAction::NotifyHandler { peer_id, handler, event }) =>
+				return Poll::Ready(NetworkBehaviourAction::NotifyHandler { peer_id, handler, event }),
+			Poll::Ready(NetworkBehaviourAction::ReportObservedAddr { address }) =>
+				return Poll::Ready(NetworkBehaviourAction::ReportObservedAddr { address }),
+		};
+
+		match event {
+			Some(GenericProtoOut::CustomProtocolOpen { peer_id, .. }) => {
+				self.on_peer_connected(peer_id.clone());
+			}
+			Some(GenericProtoOut::CustomProtocolClosed { peer_id, .. }) => {
+				let outcome = self.on_peer_disconnected(peer_id.clone());
+				if !matches!(outcome, CustomMessageOutcome::None) {
+					return Poll::Ready(NetworkBehaviourAction::GenerateEvent(outcome));
+				}
+			},
+			Some(GenericProtoOut::LegacyMessage { peer_id, message }) => {
+				let outcome = self.on_custom_message(peer_id, message);
+				if !matches!(outcome, CustomMessageOutcome::None) {
+					return Poll::Ready(NetworkBehaviourAction::GenerateEvent(outcome));
+				}
+			},
+			Some(GenericProtoOut::Notification { peer_id, protocol_name, message }) =>
+				match self.legacy_equiv_by_name.get(&protocol_name) {
+					Some(Fallback::Consensus(engine_id)) => {
+						let ev = CustomMessageOutcome::NotificationsReceived {
+							remote: peer_id,
+							messages: vec![(*engine_id, message.freeze())],
+						};
+						return Poll::Ready(NetworkBehaviourAction::GenerateEvent(ev));
+					}
+					Some(Fallback::Transactions) => {
+						if let Ok(m) = message::Transactions::decode(&mut message.as_ref()) {
+							self.on_extrinsics(peer_id, m);
+						} else {
+							warn!(target: "sub-libp2p", "Failed to decode transactions list");
+						}
+					}
+					Some(Fallback::BlockAnnounce) => {
+						if let Ok(announce) = message::BlockAnnounce::decode(&mut message.as_ref()) {
+							let outcome = self.on_block_announce(peer_id.clone(), announce);
+							self.update_peer_info(&peer_id);
+							if !matches!(outcome, CustomMessageOutcome::None) {
+								return Poll::Ready(NetworkBehaviourAction::GenerateEvent(outcome));
+							}
+						} else {
+							warn!(target: "sub-libp2p", "Failed to decode block announce");
+						}
+					}
+					None => {
+						error!(target: "sub-libp2p", "Received notification from unknown protocol {:?}", protocol_name);
+					}
+				}
+			Some(GenericProtoOut::Clogged { peer_id, messages }) => {
+				debug!(target: "sync", "{} clogging messages:", messages.len());
+				for msg in messages.into_iter().take(5) {
+					let message: Option<Message<B>> = Decode::decode(&mut &msg[..]).ok();
+					debug!(target: "sync", "{:?}", message);
+					self.on_clogged_peer(peer_id.clone(), message);
+				}
+			}
+			None => {}
+		};
+
 		while let Poll::Ready(Some(())) = self.tick_timeout.poll_next_unpin(cx) {
 			self.tick();
 		}
@@ -1959,13 +2030,25 @@ impl<B: BlockT, H: ExHashT> NetworkBehaviour for Protocol<B, H> {
 			self.propagate_extrinsics();
 		}
 
+		// Performance remark.
+		//
+		// The function call belows consist in checking the internal state of the sync state
+		// machine in order to determine what to do, and are moderately costly (at the time of
+		// writing this comment, the order of magnitude is half a millisecond). Considering that
+		// this `poll` function is called repeatedly for each event produced by the network,
+		// it is important for these internal state checks to be performed at the end. Ideally,
+		// they would only be called once.
+		//
+		// For this reason, we also push elements to `self.pending_messages` rather than returning
+		// immediately. Again, we want to avoid calling these functions as much as possible.
+
 		for (id, r) in self.sync.block_requests() {
 			if self.use_new_block_requests_protocol {
 				let event = CustomMessageOutcome::BlockRequest {
 					target: id,
 					request: r,
 				};
-				return Poll::Ready(NetworkBehaviourAction::GenerateEvent(event));
+				self.pending_messages.push_back(event);
 			} else {
 				send_request(
 					&mut self.behaviour,
@@ -1982,7 +2065,7 @@ impl<B: BlockT, H: ExHashT> NetworkBehaviour for Protocol<B, H> {
 					target: id,
 					request: r,
 				};
-				return Poll::Ready(NetworkBehaviourAction::GenerateEvent(event));
+				self.pending_messages.push_back(event);
 			} else {
 				send_request(
 					&mut self.behaviour,
@@ -2000,7 +2083,7 @@ impl<B: BlockT, H: ExHashT> NetworkBehaviour for Protocol<B, H> {
 					block_hash: r.block,
 					request: r.request,
 				};
-				return Poll::Ready(NetworkBehaviourAction::GenerateEvent(event));
+				self.pending_messages.push_back(event);
 			} else {
 				send_request(
 					&mut self.behaviour,
@@ -2011,76 +2094,13 @@ impl<B: BlockT, H: ExHashT> NetworkBehaviour for Protocol<B, H> {
 			}
 		}
 
-		let event = match self.behaviour.poll(cx, params) {
-			Poll::Pending => return Poll::Pending,
-			Poll::Ready(NetworkBehaviourAction::GenerateEvent(ev)) => ev,
-			Poll::Ready(NetworkBehaviourAction::DialAddress { address }) =>
-				return Poll::Ready(NetworkBehaviourAction::DialAddress { address }),
-			Poll::Ready(NetworkBehaviourAction::DialPeer { peer_id, condition }) =>
-				return Poll::Ready(NetworkBehaviourAction::DialPeer { peer_id, condition }),
-			Poll::Ready(NetworkBehaviourAction::NotifyHandler { peer_id, handler, event }) =>
-				return Poll::Ready(NetworkBehaviourAction::NotifyHandler { peer_id, handler, event }),
-			Poll::Ready(NetworkBehaviourAction::ReportObservedAddr { address }) =>
-				return Poll::Ready(NetworkBehaviourAction::ReportObservedAddr { address }),
-		};
-
-		let outcome = match event {
-			GenericProtoOut::CustomProtocolOpen { peer_id, .. } => {
-				self.on_peer_connected(peer_id.clone());
-				CustomMessageOutcome::None
-			}
-			GenericProtoOut::CustomProtocolClosed { peer_id, .. } => {
-				self.on_peer_disconnected(peer_id.clone())
-			},
-			GenericProtoOut::LegacyMessage { peer_id, message } =>
-				self.on_custom_message(peer_id, message),
-			GenericProtoOut::Notification { peer_id, protocol_name, message } =>
-				match self.legacy_equiv_by_name.get(&protocol_name) {
-					Some(Fallback::Consensus(engine_id)) => {
-						CustomMessageOutcome::NotificationsReceived {
-							remote: peer_id,
-							messages: vec![(*engine_id, message.freeze())],
-						}
-					}
-					Some(Fallback::Transactions) => {
-						if let Ok(m) = message::Transactions::decode(&mut message.as_ref()) {
-							self.on_extrinsics(peer_id, m);
-						} else {
-							warn!(target: "sub-libp2p", "Failed to decode transactions list");
-						}
-						CustomMessageOutcome::None
-					}
-					Some(Fallback::BlockAnnounce) => {
-						if let Ok(announce) = message::BlockAnnounce::decode(&mut message.as_ref()) {
-							let outcome = self.on_block_announce(peer_id.clone(), announce);
-							self.update_peer_info(&peer_id);
-							outcome
-						} else {
-							warn!(target: "sub-libp2p", "Failed to decode block announce");
-							CustomMessageOutcome::None
-						}
-					}
-					None => {
-						error!(target: "sub-libp2p", "Received notification from unknown protocol {:?}", protocol_name);
-						CustomMessageOutcome::None
-					}
-				}
-			GenericProtoOut::Clogged { peer_id, messages } => {
-				debug!(target: "sync", "{} clogging messages:", messages.len());
-				for msg in messages.into_iter().take(5) {
-					let message: Option<Message<B>> = Decode::decode(&mut &msg[..]).ok();
-					debug!(target: "sync", "{:?}", message);
-					self.on_clogged_peer(peer_id.clone(), message);
-				}
-				CustomMessageOutcome::None
-			}
-		};
-
-		if let CustomMessageOutcome::None = outcome {
-			Poll::Pending
-		} else {
-			Poll::Ready(NetworkBehaviourAction::GenerateEvent(outcome))
+		// This is already done at the beginning of the function, but we might have pushed new
+		// events since then.
+		if let Some(message) = self.pending_messages.pop_front() {
+			return Poll::Ready(NetworkBehaviourAction::GenerateEvent(message));
 		}
+
+		Poll::Pending
 	}
 
 	fn inject_addr_reach_failure(
