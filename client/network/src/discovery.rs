@@ -237,7 +237,12 @@ impl DiscoveryBehaviour {
 	/// Returns the list of nodes that we know exist in the network.
 	pub fn known_peers(&mut self) -> impl Iterator<Item = &PeerId> {
 		let mut set = HashSet::new();
-		for p in self.kademlias.values_mut().map(|k| k.kbuckets_entries()).flatten() {
+		for p in self.kademlias.iter_mut()
+			// The legacy Kademlia exists only for backwards-compatibility and
+			// we're not interested in the nodes that are in it.
+			.filter(|(p, _)| p != libp2p::kad::protocol::DEFAULT_PROTO_NAME)
+			.map(|(_, k)| k.kbuckets_entries()).flatten()
+		{
 			set.insert(p);
 		}
 		set.into_iter()
@@ -386,7 +391,12 @@ impl NetworkBehaviour for DiscoveryBehaviour {
 
 		{
 			let mut list_to_filter = Vec::new();
-			for k in self.kademlias.values_mut() {
+			for (p, k) in self.kademlias.iter_mut() {
+				// The legacy Kademlia exists only for backwards-compatibility and
+				// we're not interested in the nodes that are in it.
+				if p == libp2p::kad::protocol::DEFAULT_PROTO_NAME {
+					continue;
+				}
 				list_to_filter.extend(k.addresses_of_peer(peer_id))
 			}
 
@@ -580,8 +590,12 @@ impl NetworkBehaviour for DiscoveryBehaviour {
 							return Poll::Ready(NetworkBehaviourAction::GenerateEvent(ev));
 						}
 						KademliaEvent::RoutingUpdated { peer, .. } => {
-							let ev = DiscoveryOut::Discovered(peer);
-							return Poll::Ready(NetworkBehaviourAction::GenerateEvent(ev));
+							// The legacy Kademlia exists only for backwards-compatibility and
+							// we're not interested in the nodes that are in it.
+							if pid != libp2p::kad::protocol::DEFAULT_PROTO_NAME {
+								let ev = DiscoveryOut::Discovered(peer);
+								return Poll::Ready(NetworkBehaviourAction::GenerateEvent(ev));
+							}
 						}
 						KademliaEvent::GetClosestPeersResult(res) => {
 							match res {
