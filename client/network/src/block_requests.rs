@@ -337,116 +337,6 @@ where
 			SendRequestOutcome::Ok
 		}
 	}
-
-	/// Callback, invoked when a new block request has been received from remote.
-	fn on_block_request
-		( &mut self
-		, peer: &PeerId
-		, request: &schema::v1::BlockRequest
-		) -> Result<schema::v1::BlockResponse, Error>
-	{
-		log::trace!(
-			target: "sync",
-			"Block request from peer {}: from block {:?} to block {:?}, max blocks {:?}",
-			peer,
-			request.from_block,
-			request.to_block,
-			request.max_blocks);
-
-		let from_block_id =
-			match request.from_block {
-				Some(schema::v1::block_request::FromBlock::Hash(ref h)) => {
-					let h = Decode::decode(&mut h.as_ref())?;
-					BlockId::<B>::Hash(h)
-				}
-				Some(schema::v1::block_request::FromBlock::Number(ref n)) => {
-					let n = Decode::decode(&mut n.as_ref())?;
-					BlockId::<B>::Number(n)
-				}
-				None => {
-					let msg = "missing `BlockRequest::from_block` field";
-					return Err(io::Error::new(io::ErrorKind::Other, msg).into())
-				}
-			};
-
-		let max_blocks =
-			if request.max_blocks == 0 {
-				self.config.max_block_data_response
-			} else {
-				min(request.max_blocks, self.config.max_block_data_response)
-			};
-
-		let direction =
-			if request.direction == schema::v1::Direction::Ascending as i32 {
-				schema::v1::Direction::Ascending
-			} else if request.direction == schema::v1::Direction::Descending as i32 {
-				schema::v1::Direction::Descending
-			} else {
-				let msg = format!("invalid `BlockRequest::direction` value: {}", request.direction);
-				return Err(io::Error::new(io::ErrorKind::Other, msg).into())
-			};
-
-		let attributes = BlockAttributes::decode(&mut request.fields.to_be_bytes().as_ref())?;
-		let get_header = attributes.contains(BlockAttributes::HEADER);
-		let get_body = attributes.contains(BlockAttributes::BODY);
-		let get_justification = attributes.contains(BlockAttributes::JUSTIFICATION);
-
-		let mut blocks = Vec::new();
-		let mut block_id = from_block_id;
-		while let Some(header) = self.chain.header(block_id).unwrap_or(None) {
-			if blocks.len() >= max_blocks as usize {
-				break
-			}
-
-			let number = header.number().clone();
-			let hash = header.hash();
-			let parent_hash = header.parent_hash().clone();
-			let justification = if get_justification {
-				self.chain.justification(&BlockId::Hash(hash))?
-			} else {
-				None
-			};
-			let is_empty_justification = justification.as_ref().map(|j| j.is_empty()).unwrap_or(false);
-
-			let block_data = schema::v1::BlockData {
-				hash: hash.encode(),
-				header: if get_header {
-					header.encode()
-				} else {
-					Vec::new()
-				},
-				body: if get_body {
-					self.chain.block_body(&BlockId::Hash(hash))?
-						.unwrap_or(Vec::new())
-						.iter_mut()
-						.map(|extrinsic| extrinsic.encode())
-						.collect()
-				} else {
-					Vec::new()
-				},
-				receipt: Vec::new(),
-				message_queue: Vec::new(),
-				justification: justification.unwrap_or(Vec::new()),
-				is_empty_justification,
-			};
-
-			blocks.push(block_data);
-
-			match direction {
-				schema::v1::Direction::Ascending => {
-					block_id = BlockId::Number(number + One::one())
-				}
-				schema::v1::Direction::Descending => {
-					if number.is_zero() {
-						break
-					}
-					block_id = BlockId::Hash(parent_hash)
-				}
-			}
-		}
-
-		Ok(schema::v1::BlockResponse { blocks })
-	}
 }
 
 impl<B> NetworkBehaviour for BlockRequests<B>
@@ -535,38 +425,47 @@ where
 	) {
 		match node_event {
 			NodeEvent::Request(request, mut stream, handling_start) => {
-				match self.on_block_request(&peer, &request) {
-					Ok(res) => {
-						log::trace!(
-							target: "sync",
-							"Enqueueing block response for peer {} with {} blocks",
-							peer, res.blocks.len()
-						);
-						let mut data = Vec::with_capacity(res.encoded_len());
-						if let Err(e) = res.encode(&mut data) {
+				let config = self.config.clone();
+				let chain = self.chain.clone();
+
+				self.outgoing.push(async move {
+					let data = match on_block_request(&config, &chain, &peer, &request).await {
+						Ok(res) => {
+							log::trace!(
+								target: "sync",
+								"Enqueueing block response for peer {} with {} blocks",
+								peer, res.blocks.len()
+							);
+							let mut data = Vec::with_capacity(res.encoded_len());
+							if let Err(e) = res.encode(&mut data) {
+								log::debug!(
+									target: "sync",
+									"Error encoding block response for peer {}: {}",
+									peer, e
+								);
+								return (peer, handling_start.elapsed());
+							}
+							data
+						}
+						Err(e) => {
 							log::debug!(
 								target: "sync",
-								"Error encoding block response for peer {}: {}",
-								peer, e
-							)
-						} else {
-							self.outgoing.push(async move {
-								if let Err(e) = write_one(&mut stream, data).await {
-									log::debug!(
-										target: "sync",
-										"Error writing block response: {}",
-										e
-									);
-								}
-								(peer, handling_start.elapsed())
-							}.boxed());
+								"Error handling block request from peer {}: {}", peer, e
+							);
+							return (peer, handling_start.elapsed());
 						}
+					};
+
+					if let Err(e) = write_one(&mut stream, data).await {
+						log::debug!(
+							target: "sync",
+							"Error writing block response: {}",
+							e
+						);
 					}
-					Err(e) => log::debug!(
-						target: "sync",
-						"Error handling block request from peer {}: {}", peer, e
-					)
-				}
+
+					(peer, handling_start.elapsed())
+				}.boxed());
 			}
 			NodeEvent::Response(original_request, response) => {
 				log::trace!(
@@ -714,6 +613,116 @@ where
 
 		Poll::Pending
 	}
+}
+
+/// Builds the response to a request.
+async fn on_block_request<B: Block>(
+	config: &Config,
+	chain: &Arc<dyn Client<B>>,
+	peer: &PeerId,
+	request: &schema::v1::BlockRequest
+) -> Result<schema::v1::BlockResponse, Error> {
+	log::trace!(
+		target: "sync",
+		"Block request from peer {}: from block {:?} to block {:?}, max blocks {:?}",
+		peer,
+		request.from_block,
+		request.to_block,
+		request.max_blocks);
+
+	let from_block_id =
+		match request.from_block {
+			Some(schema::v1::block_request::FromBlock::Hash(ref h)) => {
+				let h = Decode::decode(&mut h.as_ref())?;
+				BlockId::<B>::Hash(h)
+			}
+			Some(schema::v1::block_request::FromBlock::Number(ref n)) => {
+				let n = Decode::decode(&mut n.as_ref())?;
+				BlockId::<B>::Number(n)
+			}
+			None => {
+				let msg = "missing `BlockRequest::from_block` field";
+				return Err(io::Error::new(io::ErrorKind::Other, msg).into())
+			}
+		};
+
+	let max_blocks =
+		if request.max_blocks == 0 {
+			config.max_block_data_response
+		} else {
+			min(request.max_blocks, config.max_block_data_response)
+		};
+
+	let direction =
+		if request.direction == schema::v1::Direction::Ascending as i32 {
+			schema::v1::Direction::Ascending
+		} else if request.direction == schema::v1::Direction::Descending as i32 {
+			schema::v1::Direction::Descending
+		} else {
+			let msg = format!("invalid `BlockRequest::direction` value: {}", request.direction);
+			return Err(io::Error::new(io::ErrorKind::Other, msg).into())
+		};
+
+	let attributes = BlockAttributes::decode(&mut request.fields.to_be_bytes().as_ref())?;
+	let get_header = attributes.contains(BlockAttributes::HEADER);
+	let get_body = attributes.contains(BlockAttributes::BODY);
+	let get_justification = attributes.contains(BlockAttributes::JUSTIFICATION);
+
+	let mut blocks = Vec::new();
+	let mut block_id = from_block_id;
+	while let Some(header) = chain.header(block_id).unwrap_or(None) {
+		if blocks.len() >= max_blocks as usize {
+			break
+		}
+
+		let number = header.number().clone();
+		let hash = header.hash();
+		let parent_hash = header.parent_hash().clone();
+		let justification = if get_justification {
+			chain.justification(&BlockId::Hash(hash))?
+		} else {
+			None
+		};
+		let is_empty_justification = justification.as_ref().map(|j| j.is_empty()).unwrap_or(false);
+
+		let block_data = schema::v1::BlockData {
+			hash: hash.encode(),
+			header: if get_header {
+				header.encode()
+			} else {
+				Vec::new()
+			},
+			body: if get_body {
+				chain.block_body(&BlockId::Hash(hash))?
+					.unwrap_or(Vec::new())
+					.iter_mut()
+					.map(|extrinsic| extrinsic.encode())
+					.collect()
+			} else {
+				Vec::new()
+			},
+			receipt: Vec::new(),
+			message_queue: Vec::new(),
+			justification: justification.unwrap_or(Vec::new()),
+			is_empty_justification,
+		};
+
+		blocks.push(block_data);
+
+		match direction {
+			schema::v1::Direction::Ascending => {
+				block_id = BlockId::Number(number + One::one())
+			}
+			schema::v1::Direction::Descending => {
+				if number.is_zero() {
+					break
+				}
+				block_id = BlockId::Hash(parent_hash)
+			}
+		}
+	}
+
+	Ok(schema::v1::BlockResponse { blocks })
 }
 
 /// Output type of inbound and outbound substream upgrades.
