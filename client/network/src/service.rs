@@ -28,7 +28,8 @@
 use crate::{
 	ExHashT, NetworkStateInfo,
 	behaviour::{Behaviour, BehaviourOut},
-	config::{parse_addr, parse_str_addr, NonReservedPeerMode, Params, Role, TransportConfig},
+	chain::ChainInfoProvider,
+	config::{parse_addr, parse_str_addr, NonReservedPeerMode, Params, Role, TaskType, TransportConfig},
 	discovery::DiscoveryConfig,
 	error::Error,
 	network_state::{
@@ -216,6 +217,21 @@ impl<B: BlockT + 'static, H: ExHashT> NetworkWorker<B, H> {
 			metrics.as_ref().map(|m| m.notifications_queues_size.clone()),
 		)?;
 
+		// We wrap the chain around some protective layer in order to avoid blocking the worker
+		// in case of long or malicious requests.
+		let wrapped_chain = {
+			let executor = &params.executor;
+			Arc::new(ChainInfoProvider::new(params.chain.clone(), |f| {
+				if let Some(executor) = executor {
+					executor("network-chain-access", TaskType::Blocking, f)
+				} else {
+					std::thread::spawn(move || {
+						futures::executor::block_on(f)
+					});
+				}
+			}))
+		};
+
 		// Build the swarm.
 		let (mut swarm, bandwidth): (Swarm<B, H>, _) = {
 			let user_agent = format!(
@@ -225,7 +241,7 @@ impl<B: BlockT + 'static, H: ExHashT> NetworkWorker<B, H> {
 			);
 			let block_requests = {
 				let config = block_requests::Config::new(&params.protocol_id);
-				block_requests::BlockRequests::new(config, params.chain.clone())
+				block_requests::BlockRequests::new(config, wrapped_chain.clone())
 			};
 			let finality_proof_requests = {
 				let config = finality_requests::Config::new(&params.protocol_id);
@@ -288,9 +304,11 @@ impl<B: BlockT + 'static, H: ExHashT> NetworkWorker<B, H> {
 				.peer_connection_limit(crate::MAX_CONNECTIONS_PER_PEER);
 			if let Some(spawner) = params.executor {
 				struct SpawnImpl<F>(F);
-				impl<F: Fn(Pin<Box<dyn Future<Output = ()> + Send>>)> Executor for SpawnImpl<F> {
+				impl<F: Fn(&'static str, TaskType, Pin<Box<dyn Future<Output = ()> + Send>>)>
+					Executor for SpawnImpl<F>
+				{
 					fn exec(&self, f: Pin<Box<dyn Future<Output = ()> + Send>>) {
-						(self.0)(f)
+						(self.0)("libp2p-node", TaskType::Async, f)
 					}
 				}
 				builder = builder.executor(Box::new(SpawnImpl(spawner)));

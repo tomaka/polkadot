@@ -909,8 +909,13 @@ ServiceBuilder<
 			role: config.role.clone(),
 			executor: {
 				let spawn_handle = task_manager.spawn_handle();
-				Some(Box::new(move |fut| {
-					spawn_handle.spawn("libp2p-node", fut);
+				Some(Box::new(move |name, ty, fut| {
+					match ty {
+						sc_network::config::TaskType::Async =>
+							spawn_handle.spawn(name, fut),
+						sc_network::config::TaskType::Blocking =>
+							spawn_handle.spawn_blocking(name, fut),
+					}
 				}))
 			},
 			network_config: config.network.clone(),

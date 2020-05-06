@@ -25,7 +25,7 @@
 use bytes::Bytes;
 use codec::{Encode, Decode};
 use crate::{
-	chain::Client,
+	chain::ChainInfoProvider,
 	config::ProtocolId,
 	protocol::{message::{self, BlockAttributes}},
 	schema,
@@ -187,7 +187,7 @@ pub struct BlockRequests<B: Block> {
 	/// This behaviour's configuration.
 	config: Config,
 	/// Blockchain client.
-	chain: Arc<dyn Client<B>>,
+	chain: Arc<ChainInfoProvider<B>>,
 	/// List of all active connections and the requests we've sent.
 	peers: HashMap<PeerId, Vec<Connection<B>>>,
 	/// Futures sending back the block request response. Returns the `PeerId` we sent back to, and
@@ -236,7 +236,7 @@ impl<B> BlockRequests<B>
 where
 	B: Block,
 {
-	pub fn new(cfg: Config, chain: Arc<dyn Client<B>>) -> Self {
+	pub fn new(cfg: Config, chain: Arc<ChainInfoProvider<B>>) -> Self {
 		BlockRequests {
 			config: cfg,
 			chain,
@@ -618,7 +618,7 @@ where
 /// Builds the response to a request.
 async fn on_block_request<B: Block>(
 	config: &Config,
-	chain: &Arc<dyn Client<B>>,
+	chain: &Arc<ChainInfoProvider<B>>,
 	peer: &PeerId,
 	request: &schema::v1::BlockRequest
 ) -> Result<schema::v1::BlockResponse, Error> {
@@ -670,7 +670,7 @@ async fn on_block_request<B: Block>(
 
 	let mut blocks = Vec::new();
 	let mut block_id = from_block_id;
-	while let Some(header) = chain.header(block_id).unwrap_or(None) {
+	while let Some(header) = chain.header(block_id).await.unwrap_or(None) {
 		if blocks.len() >= max_blocks as usize {
 			break
 		}
@@ -679,7 +679,7 @@ async fn on_block_request<B: Block>(
 		let hash = header.hash();
 		let parent_hash = header.parent_hash().clone();
 		let justification = if get_justification {
-			chain.justification(&BlockId::Hash(hash))?
+			chain.justification(BlockId::Hash(hash)).await?
 		} else {
 			None
 		};
@@ -693,7 +693,8 @@ async fn on_block_request<B: Block>(
 				Vec::new()
 			},
 			body: if get_body {
-				chain.block_body(&BlockId::Hash(hash))?
+				chain.block_body(BlockId::Hash(hash))
+					.await?
 					.unwrap_or(Vec::new())
 					.iter_mut()
 					.map(|extrinsic| extrinsic.encode())

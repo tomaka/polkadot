@@ -55,9 +55,9 @@ pub struct Params<B: BlockT, H: ExHashT> {
 	/// Assigned role for our node (full, light, ...).
 	pub role: Role,
 
-	/// How to spawn background tasks. If you pass `None`, then a threads pool will be used by
-	/// default.
-	pub executor: Option<Box<dyn Fn(Pin<Box<dyn Future<Output = ()> + Send>>) + Send>>,
+	/// Function invoked whenever we need to spawn a background task. Passed a task name, type,
+	/// and the task itself. If you pass `None`, then a threads pool will be used by default.
+	pub executor: Option<Box<dyn Fn(&'static str, TaskType, Pin<Box<dyn Future<Output = ()> + Send>>) + Send>>,
 
 	/// Network layer configuration.
 	pub network_config: NetworkConfiguration,
@@ -103,6 +103,14 @@ pub struct Params<B: BlockT, H: ExHashT> {
 	pub metrics_registry: Option<Registry>,
 }
 
+/// Type for tasks spawned by the executor.
+#[derive(PartialEq)]
+pub enum TaskType {
+	/// Regular non-blocking futures. Polling the task is expected to be a lightweight operation.
+	Async,
+	/// The task might perform a lot of expensive CPU operations and/or call `thread::sleep`.
+	Blocking,
+}
 /// Role of the local node.
 #[derive(Debug, Clone)]
 pub enum Role {
