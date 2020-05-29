@@ -41,14 +41,14 @@ use crate::{
 	protocol::{self, event::Event, LegacyConnectionKillError, sync::SyncState, PeerInfo, Protocol},
 	transport, ReputationChange,
 };
-use futures::prelude::*;
+use futures::{channel::mpsc, lock::Mutex as FutureMutex, prelude::*};
 use libp2p::{PeerId, Multiaddr};
 use libp2p::core::{ConnectedPoint, Executor, connection::{ConnectionError, PendingConnectionError}, either::EitherError};
 use libp2p::kad::record;
 use libp2p::ping::handler::PingFailure;
 use libp2p::swarm::{NetworkBehaviour, SwarmBuilder, SwarmEvent, protocols_handler::NodeHandlerWrapperError};
 use log::{error, info, trace, warn};
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use prometheus_endpoint::{
 	register, Counter, CounterVec, Gauge, GaugeVec, HistogramOpts, HistogramVec, Opts, PrometheusError, Registry, U64,
 };
@@ -61,7 +61,7 @@ use sp_runtime::{
 use sp_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
 use std::{
 	borrow::{Borrow, Cow},
-	collections::HashSet,
+	collections::{HashMap, HashSet},
 	fs, io,
 	marker::PhantomData,
 	num:: NonZeroUsize,
@@ -93,6 +93,8 @@ pub struct NetworkService<B: BlockT + 'static, H: ExHashT> {
 	/// Peerset manager (PSM); manages the reputation of nodes and indicates the network which
 	/// nodes it should be connected to or not.
 	peerset: PeersetHandle,
+	/// Pipes to send notifications to remotes.
+	notifications_pipes: Arc<RwLock<HashMap<(PeerId, ConsensusEngineId), FutureMutex<mpsc::Sender<Vec<u8>>>>>>,
 	/// Channel that sends messages to the actual worker.
 	to_worker: TracingUnboundedSender<ServiceToWorkerMsg<B, H>>,
 	/// Marker to pin the `H` generic. Serves no purpose except to not break backwards
@@ -333,6 +335,7 @@ impl<B: BlockT + 'static, H: ExHashT> NetworkWorker<B, H> {
 			is_major_syncing: is_major_syncing.clone(),
 			peerset: peerset_handle,
 			local_peer_id,
+			notifications_pipes: Default::default(),
 			to_worker,
 			_marker: PhantomData,
 		});
@@ -524,23 +527,40 @@ impl<B: BlockT + 'static, H: ExHashT> NetworkService<B, H> {
 		&self.local_peer_id
 	}
 
-	/// Writes a message on an open notifications channel. Has no effect if the notifications
-	/// channel with this protocol name is closed.
+	/// Shortcut for `write_notification_async(...).now_or_never()`. Maintained for
+	/// backwards-compatibility.
 	///
-	/// > **Note**: The reason why this is a no-op in the situation where we have no channel is
-	/// >			that we don't guarantee message delivery anyway. Networking issues can cause
-	/// >			connections to drop at any time, and higher-level logic shouldn't differentiate
-	/// >			between the remote voluntarily closing a substream or a network error
-	/// >			preventing the message from being delivered.
+	/// Notification are dropped if they are sent quicker than the background task is capable of
+	/// processing them. Keep in mind that whether or not the background task is processing
+	/// notifications quickly enough depends on a high number of parameters (including the
+	/// current CPU load) and cannot be predicted.
+	pub fn write_notification(&self, target: PeerId, engine_id: ConsensusEngineId, message: Vec<u8>) {
+		self.write_notification_async(target, engine_id, message).now_or_never();
+	}
+
+	/// Writes a message on an open notifications channel. If the notifications channel with this
+	/// protocol name is closed, or if the remote is busy, then the returned `Future` will wait
+	/// forever.
+	///
+	/// It is intentional that we don't report whether the .
+	// TODO: finish this documentation
 	///
 	/// The protocol must have been registered with `register_notifications_protocol`.
-	///
-	pub fn write_notification(&self, target: PeerId, engine_id: ConsensusEngineId, message: Vec<u8>) {
-		let _ = self.to_worker.unbounded_send(ServiceToWorkerMsg::WriteNotification {
-			target,
-			engine_id,
-			message,
-		});
+	pub async fn write_notification_async(&self, target: PeerId, engine_id: ConsensusEngineId, message: Vec<u8>) {
+		// Note that `parking_lot::RwLock` is a "fair" lock and guarantees that at some point
+		// we will acquire the locking. That being said, a futures-based `RwLock` would ideally be
+		// a better solution in order to avoid sleeping the current thread while waiting for the
+		// locking.
+
+		// TODO: finish
+		let lock = self.notifications_pipes.read();
+		if let Some(channel) = lock.get(&(target, engine_id)) {
+			// Cloning the channel in order to drop the lock as soon as possible.
+			let mut channel = channel.clone();
+			drop(lock);
+
+			let _ = channel.send(message).await;
+		}
 	}
 
 	/// Returns a stream containing the events that happen on the network.
@@ -802,11 +822,6 @@ enum ServiceToWorkerMsg<B: BlockT, H: ExHashT> {
 	AddKnownAddress(PeerId, Multiaddr),
 	SyncFork(Vec<PeerId>, B::Hash, NumberFor<B>),
 	EventStream(out_events::Sender),
-	WriteNotification {
-		message: Vec<u8>,
-		engine_id: ConsensusEngineId,
-		target: PeerId,
-	},
 	RegisterNotifProtocol {
 		engine_id: ConsensusEngineId,
 		protocol_name: Cow<'static, [u8]>,
@@ -1127,14 +1142,15 @@ impl<B: BlockT + 'static, H: ExHashT> Future for NetworkWorker<B, H> {
 					this.network_service.user_protocol_mut().set_sync_fork_request(peer_ids, &hash, number),
 				ServiceToWorkerMsg::EventStream(sender) =>
 					this.event_streams.push(sender),
-				ServiceToWorkerMsg::WriteNotification { message, engine_id, target } => {
+				/*ServiceToWorkerMsg::WriteNotification { message, engine_id, target } => {
 					if let Some(metrics) = this.metrics.as_ref() {
+						// TODO: restore this metric
 						metrics.notifications_sizes
 							.with_label_values(&["out", &maybe_utf8_bytes_to_string(&engine_id)])
 							.observe(message.len() as f64);
 					}
 					this.network_service.user_protocol_mut().write_notification(target, engine_id, message)
-				},
+				},*/
 				ServiceToWorkerMsg::RegisterNotifProtocol { engine_id, protocol_name } => {
 					this.network_service
 						.register_notifications_protocol(engine_id, protocol_name);

@@ -1262,7 +1262,7 @@ impl NetworkBehaviour for GenericProto {
 				}
 			}
 
-			NotifsHandlerOut::Open { endpoint } => {
+			NotifsHandlerOut::Open { endpoint, pipe } => {
 				debug!(target: "sub-libp2p",
 					"Handler({:?}) => Endpoint {:?} open for custom protocols.",
 					source, endpoint);

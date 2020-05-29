@@ -198,6 +198,8 @@ pub enum NotifsHandlerOut {
 	Open {
 		/// The endpoint of the connection that is open for custom protocols.
 		endpoint: ConnectedPoint,
+		/// Object to use to send and receive notifications with this remote.
+		pipe: NotificationsIn,
 	},
 
 	/// The connection is closed for custom protocols.
@@ -240,6 +242,30 @@ pub enum NotifsHandlerOut {
 		/// The error that happened.
 		error: Box<dyn error::Error + Send + Sync>,
 	},
+}
+
+/// Pipe to communicate notifications towards the peer.
+#[derive(Debug)]
+pub struct NotificationsIn {
+
+}
+
+impl NotificationsIn {
+	pub fn write_notification(&self, protocol_name: Into<Cow<'static, [u8]>>, encoded_fallback_message: Vec<u8>, message: Vec<u8>) {
+		/// Name of the protocol for the message.
+		///
+		/// Must match one of the registered protocols. For backwards-compatibility reasons, if
+		/// the remote doesn't support this protocol, we use the legacy substream.
+		protocol_name: Cow<'static, [u8]>,
+
+		/// Message to send on the legacy substream if the protocol isn't available.
+		///
+		/// This corresponds to what you would have sent with `SendLegacy`.
+		encoded_fallback_message: Vec<u8>,
+
+		/// The message to send.
+		message: Vec<u8>,
+	}
 }
 
 impl NotifsHandlerProto {
@@ -492,7 +518,7 @@ impl ProtocolsHandler for NotifsHandler {
 					}),
 				ProtocolsHandlerEvent::Custom(LegacyProtoHandlerOut::CustomProtocolOpen { endpoint, .. }) =>
 					Poll::Ready(ProtocolsHandlerEvent::Custom(
-						NotifsHandlerOut::Open { endpoint }
+						NotifsHandlerOut::Open { endpoint, pipe: NotificationsIn {} }
 					)),
 				ProtocolsHandlerEvent::Custom(LegacyProtoHandlerOut::CustomProtocolClosed { endpoint, reason }) =>
 					Poll::Ready(ProtocolsHandlerEvent::Custom(
