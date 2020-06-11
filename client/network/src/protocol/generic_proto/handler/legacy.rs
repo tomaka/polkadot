@@ -276,12 +276,10 @@ impl LegacyProtoHandler {
 
 			ProtocolState::Init { substreams: incoming, .. } => {
 				if incoming.is_empty() {
-					if let ConnectedPoint::Dialer { .. } = self.endpoint {
-						self.events_queue.push_back(ProtocolsHandlerEvent::OutboundSubstreamRequest {
-							protocol: SubstreamProtocol::new(self.protocol.clone()),
-							info: (),
-						});
-					}
+					self.events_queue.push_back(ProtocolsHandlerEvent::OutboundSubstreamRequest {
+						protocol: SubstreamProtocol::new(self.protocol.clone()),
+						info: (),
+					});
 					ProtocolState::Opening {
 						deadline: Delay::new(Duration::from_secs(60))
 					}
