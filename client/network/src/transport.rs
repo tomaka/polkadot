@@ -41,8 +41,7 @@ pub use self::bandwidth::BandwidthSinks;
 pub fn build_transport(
 	keypair: identity::Keypair,
 	memory_only: bool,
-	wasm_external_transport: Option<wasm_ext::ExtTransport>,
-	use_yamux_flow_control: bool
+	wasm_external_transport: Option<wasm_ext::ExtTransport>
 ) -> (Boxed<(PeerId, StreamMuxerBox), io::Error>, Arc<bandwidth::BandwidthSinks>) {
 	// Build configuration objects for encryption mechanisms.
 	let noise_config = {
@@ -71,12 +70,9 @@ pub fn build_transport(
 
 	let mut yamux_config = libp2p::yamux::Config::default();
 	yamux_config.set_lazy_open(true); // Only set SYN flag on first data frame sent to the remote.
-
-	if use_yamux_flow_control {
-		// Enable proper flow-control: window updates are only sent when
-		// buffered data has been consumed.
-		yamux_config.set_window_update_mode(libp2p::yamux::WindowUpdateMode::OnRead);
-	}
+	// Enable proper flow-control: window updates are only sent when
+	// buffered data has been consumed.
+	yamux_config.set_window_update_mode(libp2p::yamux::WindowUpdateMode::OnRead);
 
 	// Build the base layer of the transport.
 	let transport = if let Some(t) = wasm_external_transport {
