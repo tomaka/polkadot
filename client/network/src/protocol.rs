@@ -48,7 +48,7 @@ use sp_runtime::traits::{
 use sp_arithmetic::traits::SaturatedConversion;
 use message::{BlockAnnounce, Message};
 use message::generic::{Message as GenericMessage, ConsensusMessage, Roles};
-use prometheus_endpoint::{Registry, Gauge, GaugeVec, HistogramVec, PrometheusError, Opts, register, U64};
+use prometheus_endpoint::{Registry, Gauge, GaugeVec, PrometheusError, Opts, register, U64};
 use sync::{ChainSync, SyncState};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -379,7 +379,6 @@ impl<B: BlockT, H: ExHashT> Protocol<B, H> {
 		metrics_registry: Option<&Registry>,
 		boot_node_ids: Arc<HashSet<PeerId>>,
 		use_new_block_requests_protocol: bool,
-		queue_size_report: Option<HistogramVec>,
 	) -> error::Result<(Protocol<B, H>, sc_peerset::PeersetHandle)> {
 		let info = chain.info();
 		let sync = ChainSync::new(
@@ -408,8 +407,8 @@ impl<B: BlockT, H: ExHashT> Protocol<B, H> {
 			versions,
 			build_status_message(&config, &chain),
 			peerset,
-			queue_size_report,
-		);
+			metrics_registry,
+		)?;
 
 		let mut legacy_equiv_by_name = HashMap::new();
 

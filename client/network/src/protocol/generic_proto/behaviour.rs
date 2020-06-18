@@ -31,7 +31,16 @@ use libp2p::swarm::{
 };
 use log::{debug, error, trace, warn};
 use parking_lot::RwLock;
-use prometheus_endpoint::HistogramVec;
+use prometheus_endpoint::{
+	Counter,
+	HistogramOpts,
+	HistogramVec,
+	Opts,
+	PrometheusError,
+	Registry,
+	U64,
+	register,
+};
 use rand::distributions::{Distribution as _, Uniform};
 use smallvec::SmallVec;
 use std::task::{Context, Poll};
@@ -150,8 +159,8 @@ pub struct GenericProto {
 	/// Events to produce from `poll()`.
 	events: VecDeque<NetworkBehaviourAction<NotifsHandlerIn, GenericProtoOut>>,
 
-	/// If `Some`, report the message queue sizes on this `Histogram`.
-	queue_size_report: Option<HistogramVec>,
+	/// Prometheus metrics to report e.g. message queue size.
+	metrics: Option<Metrics>,
 }
 
 /// Identifier for a delay firing.
@@ -324,23 +333,52 @@ pub enum GenericProtoOut {
 	},
 }
 
+struct Metrics {
+	notifications_queue_size: HistogramVec,
+	non_primary_connections_opened: Counter<U64>,
+}
+
+impl Metrics {
+	fn register(registry: &Registry) -> Result<Self, PrometheusError> {
+		Ok(Metrics {
+			notifications_queue_size: register(HistogramVec::new(
+				HistogramOpts {
+					common_opts: Opts::new(
+						"sub_libp2p_notifications_queues_size",
+						"Total size of all the notification queues"
+					),
+					buckets: vec![0.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 511.0, 512.0],
+				},
+				&["protocol"]
+			)?, registry)?,
+			non_primary_connections_opened: register(Counter::new(
+				"sub_libp2p_non_primary_connections_opened_total",
+				"Total number of non-primary connections opened"
+			)?, registry)?,
+		})
+	}
+}
+
 impl GenericProto {
 	/// Creates a `CustomProtos`.
-	///
-	/// The `queue_size_report` is an optional Prometheus metric that can report the size of the
-	/// messages queue. If passed, it must have one label for the protocol name.
 	pub fn new(
 		local_peer_id: PeerId,
 		protocol: impl Into<ProtocolId>,
 		versions: &[u8],
 		handshake_message: Vec<u8>,
 		peerset: sc_peerset::Peerset,
-		queue_size_report: Option<HistogramVec>,
-	) -> Self {
+		metric_registry: Option<&Registry>,
+	) -> Result<Self, PrometheusError> {
 		let legacy_handshake_message = Arc::new(RwLock::new(handshake_message));
 		let legacy_protocol = RegisteredProtocol::new(protocol, versions, legacy_handshake_message);
 
-		GenericProto {
+		let metrics = if let Some(registry) = metric_registry {
+			Some(Metrics::register(registry)?)
+		} else {
+			None
+		};
+
+		Ok(GenericProto {
 			local_peer_id,
 			legacy_protocol,
 			notif_protocols: Vec::new(),
@@ -351,8 +389,8 @@ impl GenericProto {
 			incoming: SmallVec::new(),
 			next_incoming_index: sc_peerset::IncomingIndex(0),
 			events: VecDeque::new(),
-			queue_size_report,
-		}
+			metrics,
+		})
 	}
 
 	/// Registers a new notifications protocol.
@@ -888,7 +926,7 @@ impl NetworkBehaviour for GenericProto {
 		NotifsHandlerProto::new(
 			self.legacy_protocol.clone(),
 			self.notif_protocols.clone(),
-			self.queue_size_report.clone()
+			self.metrics.as_ref().map(|m| m.notifications_queue_size.clone()),
 		)
 	}
 
@@ -1291,6 +1329,9 @@ impl NetworkBehaviour for GenericProto {
 					let event = GenericProtoOut::CustomProtocolOpen { peer_id: source, received_handshake };
 					self.events.push_back(NetworkBehaviourAction::GenerateEvent(event));
 				} else {
+					if let Some(metrics) = &self.metrics {
+						metrics.non_primary_connections_opened.inc();
+					}
 					debug!(target: "sub-libp2p", "Secondary connection opened custom protocol.");
 				}
 			}

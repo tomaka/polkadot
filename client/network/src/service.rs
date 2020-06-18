@@ -225,7 +225,6 @@ impl<B: BlockT + 'static, H: ExHashT> NetworkWorker<B, H> {
 			params.metrics_registry.as_ref(),
 			boot_node_ids.clone(),
 			params.network_config.use_new_block_requests_protocol,
-			metrics.as_ref().map(|m| m.notifications_queues_size.clone()),
 		)?;
 
 		// Build the swarm.
@@ -862,7 +861,6 @@ struct Metrics {
 	listeners_local_addresses: Gauge<U64>,
 	listeners_errors_total: Counter<U64>,
 	network_per_sec_bytes: GaugeVec<U64>,
-	notifications_queues_size: HistogramVec,
 	notifications_sizes: HistogramVec,
 	notifications_streams_closed_total: CounterVec<U64>,
 	notifications_streams_opened_total: CounterVec<U64>,
@@ -966,16 +964,6 @@ impl Metrics {
 					"Average bandwidth usage per second"
 				),
 				&["direction"]
-			)?, registry)?,
-			notifications_queues_size: register(HistogramVec::new(
-				HistogramOpts {
-					common_opts: Opts::new(
-						"sub_libp2p_notifications_queues_size",
-						"Total size of all the notification queues"
-					),
-					buckets: vec![0.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 511.0, 512.0],
-				},
-				&["protocol"]
 			)?, registry)?,
 			notifications_sizes: register(HistogramVec::new(
 				HistogramOpts {
