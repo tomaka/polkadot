@@ -93,7 +93,7 @@ impl TelemetryWorker {
 				.and_then(|connec, _| {
 					let connec = connec
 						.with(|item: BytesMut| {
-							let item = libp2p::websocket::framed::OutgoingData::Binary(item);
+							let item = libp2p::websocket::framed::OutgoingData::Binary(item.to_vec());
 							future::ready(Ok::<_, io::Error>(item))
 						})
 						.try_filter(|item| future::ready(item.is_data()))
