@@ -2658,7 +2658,7 @@ dependencies = [
  "bytes 0.5.4",
  "futures 0.3.5",
  "lazy_static",
- "libp2p-core 0.19.1",
+ "libp2p-core",
  "libp2p-core-derive",
  "libp2p-dns",
  "libp2p-identify",
@@ -2670,49 +2670,15 @@ dependencies = [
  "libp2p-secio",
  "libp2p-swarm",
  "libp2p-tcp",
- "libp2p-wasm-ext 0.19.0 (git+https://github.com/dignifiedquire/rust-libp2p?branch=upgrade-async-std)",
+ "libp2p-wasm-ext",
  "libp2p-websocket",
  "libp2p-yamux",
  "multihash",
- "parity-multiaddr 0.9.0 (git+https://github.com/dignifiedquire/rust-libp2p?branch=upgrade-async-std)",
+ "parity-multiaddr 0.9.0",
  "parking_lot 0.10.2",
  "pin-project",
  "smallvec 1.4.0",
  "wasm-timer",
-]
-
-[[package]]
-name = "libp2p-core"
-version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80a6000296bdbff540b6c00ef82108ef23aa68d195b9333823ea491562c338d7"
-dependencies = [
- "asn1_der",
- "bs58",
- "ed25519-dalek",
- "either",
- "fnv",
- "futures 0.3.5",
- "futures-timer 3.0.2",
- "lazy_static",
- "libsecp256k1",
- "log",
- "multihash",
- "multistream-select 0.8.0",
- "parity-multiaddr 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "parking_lot 0.10.2",
- "pin-project",
- "prost",
- "prost-build",
- "rand 0.7.3",
- "ring",
- "rw-stream-sink",
- "sha2",
- "smallvec 1.4.0",
- "thiserror",
- "unsigned-varint",
- "void",
- "zeroize",
 ]
 
 [[package]]
@@ -2731,8 +2697,8 @@ dependencies = [
  "libsecp256k1",
  "log",
  "multihash",
- "multistream-select 0.8.1",
- "parity-multiaddr 0.9.0 (git+https://github.com/dignifiedquire/rust-libp2p?branch=upgrade-async-std)",
+ "multistream-select",
+ "parity-multiaddr 0.9.0",
  "parking_lot 0.10.2",
  "pin-project",
  "prost",
@@ -2763,7 +2729,7 @@ version = "0.19.0"
 source = "git+https://github.com/dignifiedquire/rust-libp2p?branch=upgrade-async-std#dcc3ee7c401ad8f92d0842b7017d0b4e97ace384"
 dependencies = [
  "futures 0.3.5",
- "libp2p-core 0.19.1",
+ "libp2p-core",
  "log",
 ]
 
@@ -2773,7 +2739,7 @@ version = "0.19.1"
 source = "git+https://github.com/dignifiedquire/rust-libp2p?branch=upgrade-async-std#dcc3ee7c401ad8f92d0842b7017d0b4e97ace384"
 dependencies = [
  "futures 0.3.5",
- "libp2p-core 0.19.1",
+ "libp2p-core",
  "libp2p-swarm",
  "log",
  "prost",
@@ -2793,7 +2759,7 @@ dependencies = [
  "fnv",
  "futures 0.3.5",
  "futures_codec",
- "libp2p-core 0.19.1",
+ "libp2p-core",
  "libp2p-swarm",
  "log",
  "multihash",
@@ -2819,7 +2785,7 @@ dependencies = [
  "either",
  "futures 0.3.5",
  "lazy_static",
- "libp2p-core 0.19.1",
+ "libp2p-core",
  "libp2p-swarm",
  "log",
  "net2",
@@ -2838,7 +2804,7 @@ dependencies = [
  "fnv",
  "futures 0.3.5",
  "futures_codec",
- "libp2p-core 0.19.1",
+ "libp2p-core",
  "log",
  "parking_lot 0.10.2",
  "unsigned-varint",
@@ -2852,7 +2818,7 @@ dependencies = [
  "curve25519-dalek",
  "futures 0.3.5",
  "lazy_static",
- "libp2p-core 0.19.1",
+ "libp2p-core",
  "log",
  "prost",
  "prost-build",
@@ -2870,7 +2836,7 @@ version = "0.19.2"
 source = "git+https://github.com/dignifiedquire/rust-libp2p?branch=upgrade-async-std#dcc3ee7c401ad8f92d0842b7017d0b4e97ace384"
 dependencies = [
  "futures 0.3.5",
- "libp2p-core 0.19.1",
+ "libp2p-core",
  "libp2p-swarm",
  "log",
  "rand 0.7.3",
@@ -2889,7 +2855,7 @@ dependencies = [
  "hmac",
  "js-sys",
  "lazy_static",
- "libp2p-core 0.19.1",
+ "libp2p-core",
  "log",
  "parity-send-wrapper",
  "pin-project",
@@ -2913,7 +2879,7 @@ version = "0.19.0"
 source = "git+https://github.com/dignifiedquire/rust-libp2p?branch=upgrade-async-std#dcc3ee7c401ad8f92d0842b7017d0b4e97ace384"
 dependencies = [
  "futures 0.3.5",
- "libp2p-core 0.19.1",
+ "libp2p-core",
  "log",
  "rand 0.7.3",
  "smallvec 1.4.0",
@@ -2931,7 +2897,7 @@ dependencies = [
  "futures-timer 3.0.2",
  "get_if_addrs",
  "ipnet",
- "libp2p-core 0.19.1",
+ "libp2p-core",
  "log",
  "socket2",
 ]
@@ -2943,21 +2909,7 @@ source = "git+https://github.com/dignifiedquire/rust-libp2p?branch=upgrade-async
 dependencies = [
  "futures 0.3.5",
  "js-sys",
- "libp2p-core 0.19.1",
- "parity-send-wrapper",
- "wasm-bindgen",
- "wasm-bindgen-futures",
-]
-
-[[package]]
-name = "libp2p-wasm-ext"
-version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f59fdbb5706f2723ca108c088b1c7a37f735a8c328021f0508007162627e9885"
-dependencies = [
- "futures 0.3.5",
- "js-sys",
- "libp2p-core 0.19.0",
+ "libp2p-core",
  "parity-send-wrapper",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -2971,7 +2923,7 @@ dependencies = [
  "async-tls",
  "either",
  "futures 0.3.5",
- "libp2p-core 0.19.1",
+ "libp2p-core",
  "log",
  "quicksink",
  "rustls",
@@ -2988,7 +2940,7 @@ version = "0.19.0"
 source = "git+https://github.com/dignifiedquire/rust-libp2p?branch=upgrade-async-std#dcc3ee7c401ad8f92d0842b7017d0b4e97ace384"
 dependencies = [
  "futures 0.3.5",
- "libp2p-core 0.19.1",
+ "libp2p-core",
  "parking_lot 0.10.2",
  "thiserror",
  "yamux",
@@ -3292,20 +3244,6 @@ name = "multimap"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8883adfde9756c1d30b0f519c9b8c502a94b41ac62f696453c37c7fc0a958ce"
-
-[[package]]
-name = "multistream-select"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74cdcf7cfb3402881e15a1f95116cb033d69b33c83d481e1234777f5ef0c3d2c"
-dependencies = [
- "bytes 0.5.4",
- "futures 0.3.5",
- "log",
- "pin-project",
- "smallvec 1.4.0",
- "unsigned-varint",
-]
 
 [[package]]
 name = "multistream-select"
@@ -4821,24 +4759,6 @@ dependencies = [
 name = "parity-multiaddr"
 version = "0.9.0"
 source = "git+https://github.com/dignifiedquire/rust-libp2p?branch=upgrade-async-std#dcc3ee7c401ad8f92d0842b7017d0b4e97ace384"
-dependencies = [
- "arrayref",
- "bs58",
- "byteorder",
- "data-encoding",
- "multihash",
- "percent-encoding 2.1.0",
- "serde",
- "static_assertions",
- "unsigned-varint",
- "url 2.1.1",
-]
-
-[[package]]
-name = "parity-multiaddr"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12ca96399f4a01aa89c59220c4f52ac371940eb4e53e3ce990da796f364bdf69"
 dependencies = [
  "arrayref",
  "bs58",
@@ -8230,7 +8150,7 @@ dependencies = [
  "futures-timer 3.0.2",
  "js-sys",
  "kvdb-web",
- "libp2p-wasm-ext 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libp2p-wasm-ext",
  "log",
  "rand 0.6.5",
  "rand 0.7.3",
