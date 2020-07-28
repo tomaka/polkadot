@@ -76,7 +76,7 @@ use std::{borrow::Cow, error, io, str, sync::Arc, task::{Context, Poll}};
 /// See [`NotificationsSink::reserve_notification`] for context.
 const ASYNC_NOTIFICATIONS_BUFFER_SIZE: usize = 8;
 /// Number of pending notifications in synchronous contexts.
-const SYNC_NOTIFICATIONS_BUFFER_SIZE: usize = 4096;
+const SYNC_NOTIFICATIONS_BUFFER_SIZE: usize = 1024;
 
 /// Implements the `IntoProtocolsHandler` trait of libp2p.
 ///
