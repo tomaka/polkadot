@@ -279,12 +279,12 @@ impl NotificationsSink {
 			message: message.into()
 		});
 
-		if result.is_err() {
+		/*if result.is_err() {
 			// Cloning the `mpsc::Sender` guarantees the allocation of an extra spot in the
 			// buffer, and therefore that `try_send` will succeed.
 			let _result2 = lock.clone().try_send(NotificationsSinkMessage::ForceClose);
 			debug_assert!(_result2.map(|()| true).unwrap_or_else(|err| err.is_disconnected()));
-		}
+		}*/
 	}
 
 	/// Sends a notification to the peer.
@@ -309,12 +309,12 @@ impl NotificationsSink {
 			message: message.into()
 		});
 
-		if result.is_err() {
+		/*if result.is_err() {
 			// Cloning the `mpsc::Sender` guarantees the allocation of an extra spot in the
 			// buffer, and therefore that `try_send` will succeed.
 			let _result2 = lock.clone().try_send(NotificationsSinkMessage::ForceClose);
 			debug_assert!(_result2.map(|()| true).unwrap_or_else(|err| err.is_disconnected()));
-		}
+		}*/
 	}
 
 	/// Wait until the remote is ready to accept a notification.
@@ -616,7 +616,7 @@ impl ProtocolsHandler for NotifsHandler {
 						});
 					}
 					NotificationsSinkMessage::ForceClose => {
-						return Poll::Ready(ProtocolsHandlerEvent::Close(NotifsHandlerError::SyncNotificationsClogged));
+						//return Poll::Ready(ProtocolsHandlerEvent::Close(NotifsHandlerError::SyncNotificationsClogged));
 					}
 				}
 			}
