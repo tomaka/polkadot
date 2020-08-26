@@ -159,9 +159,9 @@ struct DelayId(u64);
 /// State of a peer we're connected to.
 #[derive(Debug)]
 enum PeerState {
-	/// State is poisoned. This is a temporary state for a peer and we should always switch back
-	/// to it later. If it is found in the wild, that means there was either a panic or a bug in
-	/// the state machine code.
+	/// State is poisoned. This is a temporary state for a peer and we should always switch out
+	/// from it later. If it is found in the wild, that means there was either a panic or a bug
+	/// in the state machine code.
 	Poisoned,
 
 	/// The peer misbehaved. If the PSM wants us to connect to this peer, we will add an artificial
@@ -192,9 +192,9 @@ enum PeerState {
 		banned_until: Option<Instant>,
 	},
 
-	/// We are connected to this peer but we are not opening any Substrate substream. The handler
-	/// will be enabled when `timer` fires. This peer can still perform Kademlia queries and such,
-	/// but should get disconnected in a few seconds.
+	/// We are connected to this peer but we are not opening any notification substream. The
+	/// handler will be enabled when `timer` fires. This peer can still perform Kademlia queries
+	/// and such, but should get disconnected in a few seconds.
 	DisabledPendingEnable {
 		/// The connections that are currently open for custom protocol traffic.
 		open: SmallVec<[(ConnectionId, NotificationsSink); crate::MAX_CONNECTIONS_PER_PEER]>,
@@ -1127,10 +1127,10 @@ impl NetworkBehaviour for GenericProto {
 		event: NotifsHandlerOut,
 	) {
 		match event {
-			NotifsHandlerOut::Closed { endpoint, reason } => {
+			NotifsHandlerOut::SubstreamClosed { endpoint } => {
 				debug!(target: "sub-libp2p",
 					"Handler({:?}) => Endpoint {:?} closed for custom protocols: {}",
-					source, endpoint, reason);
+					source, endpoint);
 
 				let mut entry = if let Entry::Occupied(entry) = self.peers.entry(source.clone()) {
 					entry
@@ -1273,7 +1273,7 @@ impl NetworkBehaviour for GenericProto {
 				}
 			}
 
-			NotifsHandlerOut::Open { endpoint, received_handshake, notifications_sink } => {
+			NotifsHandlerOut::SubstreamOpen { endpoint, received_handshake, notifications_sink } => {
 				debug!(target: "sub-libp2p",
 					"Handler({:?}) => Endpoint {:?} open for custom protocols.",
 					source, endpoint);

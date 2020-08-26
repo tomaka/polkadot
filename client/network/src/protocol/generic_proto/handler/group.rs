@@ -14,35 +14,47 @@
 // You should have received a copy of the GNU General Public License
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Implementations of the `IntoProtocolsHandler` and `ProtocolsHandler` traits for both incoming
-//! and outgoing substreams for all gossiping protocols together.
+//! Implementation of the `IntoProtocolsHandler` and `ProtocolsHandler` traits for both incoming
+//! and outgoing substreams for all notification protocols combined.
 //!
-//! This is the main implementation of `ProtocolsHandler` in this crate, that handles all the
-//! protocols that are Substrate-related and outside of the scope of libp2p.
+//! The list of notification protocols that are being handled must be passed to the
+//! [`NotifsHandlerProto::new`] function.
 //!
 //! # Usage
 //!
-//! The handler can be in one of the following states: `Initial`, `Enabled`, `Disabled`.
+//! The state of the handler is composed of the following parts:
 //!
-//! The `Initial` state is the state that the handler initially is in. It is a temporary state
-//! during which the user must either enable or disable the handler. After that, the handler stays
-//! either enabled or disabled.
+//! -A handler-wide *desired* state decided by the local node by sending messages to the
+//! `ProtocolsHandler`. It consists of one of the following states: `Passive`, `ActiveConnect`,
+//! or `Reject`. See also [`NotifsHandlerIn`].
 //!
-//! On the wire, we try to open the following substreams:
+//! - For each individual notification protocol, its *actual* state. It consists in one of the
+//! following: `Open`, `Closed`, `OpenDesired`, or `CloseDesired`. All notification protocols are
+//! initially in the `Closed` state.
 //!
-//! - One substream for each notification protocol passed as parameter to the
-//!   `NotifsHandlerProto::new` function.
-//! - One "legacy" substream used for anything non-related to gossiping, and used as a fallback
-//!   in case the notification protocol can't be opened.
+//! > **Note**: It is planned that in the future the desired state becomes specific to each
+//! >           notification protocol as well.
 //!
-//! When the handler is in the `Enabled` state, we immediately open and try to maintain all the
-//! aforementioned substreams. When the handler is in the `Disabled` state, we immediately close
-//! (or abort opening) all these substreams. It is intended that in the future we allow states in
-//! which some protocols are open and not others. Symmetrically, we allow incoming
-//! Substrate-related substreams if and only if we are in the `Enabled` state.
+//! When it comes to the *desired* state:
 //!
-//! The user has the choice between sending a message with `SendNotification`, to send a
-//! notification, and `SendLegacy`, to send any other kind of message.
+//! - In the `ActiveConnect` state, the handler actively tries to open with the remote one
+//! substream for each notification protocol.
+//! - In the `Passive` state, the handler doesn't perform any pro-active action with the remote.
+//! The handler doesn't accept or refuse opening requests made by the remote but leaves them
+//! pending. This is the default mode the handler starts in.
+//! - In the `Reject` state, the handler actively tries to close any existing substream or
+//! substream request and rejects opening requests made by the remote.
+//!
+//! When it comes to the *actual* state:
+//!
+//! - In the `Open` state, there exists a bi-directional substream for that protocol.
+//! Notifications can be sent and received.
+//! - In the `Closed` state, there isn't any open substream.
+//! - In the `OpenDesired` state, no substream is open but the remote has emitted a handshake
+//! and would like one to be opened. If the desired state is `Passive`, one is encouraged to
+//! switch to either `ActiveConnect` or `Reject` in order to accept or reject the handshake.
+//! - In the `CloseDesired` state, a substream is open but the remote has expressed the desire
+//! to close it.
 //!
 
 use crate::protocol::generic_proto::{
@@ -122,9 +134,9 @@ pub struct NotifsHandler {
 	/// State of this handler.
 	enabled: EnabledState,
 
-	/// If we receive inbound substream requests while in initialization mode,
-	/// we push the corresponding index here and process them when the handler
-	/// gets enabled/disabled.
+	/// If an inbound substream requests is received while in passive mode, the corresponding
+	/// index is pushed here and processed when the handler gets enabled/disabled.
+	// TODO: move to EnabledState::Passive?
 	pending_in: Vec<usize>,
 
 	/// If `Some`, contains the two `Receiver`s connected to the [`NotificationsSink`] that has
@@ -145,9 +157,9 @@ pub struct NotifsHandler {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum EnabledState {
-	Initial,
-	Enabled,
-	Disabled,
+	Passive,
+	Active,
+	Reject,
 }
 
 impl IntoProtocolsHandler for NotifsHandlerProto {
@@ -174,7 +186,7 @@ impl IntoProtocolsHandler for NotifsHandlerProto {
 			endpoint: connected_point.clone(),
 			legacy: self.legacy.into_handler(remote_peer_id, connected_point),
 			pending_handshake: None,
-			enabled: EnabledState::Initial,
+			enabled: EnabledState::Passive,
 			pending_in: Vec::new(),
 			notifications_sink_rx: None,
 		}
@@ -184,45 +196,58 @@ impl IntoProtocolsHandler for NotifsHandlerProto {
 /// Event that can be received by a `NotifsHandler`.
 #[derive(Debug, Clone)]
 pub enum NotifsHandlerIn {
-	/// The node should start using custom protocols.
-	Enable,
+	/// The handler must switch to the `ActiveConnect` state. See the module-level documentation.
+	SetActiveConnect,
 
-	/// The node should stop using custom protocols.
-	Disable,
+	/// The handler must switch to the `Reject` state. See the module-level documentation.
+	SetReject,
+
+	/// The handler must switch to the `Passive` state. Any existing substream will be preserved.
+	/// See the module-level documentation.
+	SetPassive,
+
+	/// The handler must drop any existing substream or any substream request and switch to the
+	/// `Passive` state. See the module-level documentation.
+	Close,
 }
 
 /// Event that can be emitted by a `NotifsHandler`.
 #[derive(Debug)]
 pub enum NotifsHandlerOut {
-	/// The connection is open for custom protocols.
-	Open {
-		/// The endpoint of the connection that is open for custom protocols.
+	/// The substreams for notification protocols are open.
+	SubstreamOpen {
+		/// The endpoint of the connection.
 		endpoint: ConnectedPoint,
 		/// Handshake that was sent to us.
-		/// This is normally a "Status" message, but this out of the concern of this code.
 		received_handshake: Vec<u8>,
 		/// How notifications can be sent to this node.
 		notifications_sink: NotificationsSink,
 	},
 
-	/// The connection is closed for custom protocols.
-	Closed {
-		/// The reason for closing, for diagnostic purposes.
-		reason: Cow<'static, str>,
-		/// The endpoint of the connection that closed for custom protocols.
+	/// The substream for notification protocols are closed.
+	SubstreamClosed {
+		/// The endpoint of the connection.
 		endpoint: ConnectedPoint,
 	},
 
-	/// Received a non-gossiping message on the legacy substream.
-	CustomMessage {
-		/// Message that has been received.
-		///
-		/// Keep in mind that this can be a `ConsensusMessage` message, which then contains a
-		/// notification.
-		message: BytesMut,
+	/// The substreams for notification protocols are currently closed, but the remote has
+	/// expressed the desire for them to be open.
+	SubstreamOpenDesired {
+		/// The endpoint of the connection.
+		endpoint: ConnectedPoint,
 	},
 
-	/// Received a message on a custom protocol substream.
+	/// The substream for notification protocols are currently open, but the remote has
+	/// expressed the desire for them to be closed.
+	SubstreamCloseDesired {
+		/// The endpoint of the connection.
+		endpoint: ConnectedPoint,
+	},
+
+	/// Received a message on a notification protocol substream.
+	///
+	/// Can only happen after [`NotifsHandlerOut::SubstreamOpen`] and before
+	/// [`NotifsHandlerOut::SubstreamClosed`].
 	Notification {
 		/// Name of the protocol of the message.
 		protocol_name: Cow<'static, str>,
@@ -444,11 +469,11 @@ impl ProtocolsHandler for NotifsHandler {
 
 	fn inject_event(&mut self, message: NotifsHandlerIn) {
 		match message {
-			NotifsHandlerIn::Enable => {
-				if let EnabledState::Enabled = self.enabled {
-					debug!("enabling already-enabled handler");
+			NotifsHandlerIn::SetActiveConnect => {
+				if let EnabledState::Active = self.enabled {
+					debug!("setting handler to active when already in active mode");
 				}
-				self.enabled = EnabledState::Enabled;
+				self.enabled = EnabledState::Active;
 				self.legacy.inject_event(LegacyProtoHandlerIn::Enable);
 				for (handler, initial_message) in &mut self.out_handlers {
 					// We create `initial_message` on a separate line to be sure that the lock
@@ -466,19 +491,39 @@ impl ProtocolsHandler for NotifsHandler {
 						.inject_event(NotifsInHandlerIn::Accept(handshake_message));
 				}
 			},
-			NotifsHandlerIn::Disable => {
-				if let EnabledState::Disabled = self.enabled {
-					debug!("disabling already-disabled handler");
+			NotifsHandlerIn::SetReject => {
+				if let EnabledState::Reject = self.enabled {
+					debug!("setting handler to reject when already in reject mode");
 				}
 				self.legacy.inject_event(LegacyProtoHandlerIn::Disable);
-				// The notifications protocols start in the disabled state. If we were in the
-				// "Initial" state, then we shouldn't disable the notifications protocols again.
-				if self.enabled != EnabledState::Initial {
+				for (handler, _) in &mut self.out_handlers {
+					handler.inject_event(NotifsOutHandlerIn::Disable);
+				}
+				self.enabled = EnabledState::Reject;
+				for num in self.pending_in.drain(..) {
+					self.in_handlers[num].0.inject_event(NotifsInHandlerIn::Refuse);
+				}
+			},
+			NotifsHandlerIn::SetPassive => {
+				if let EnabledState::Passive = self.enabled {
+					debug!("setting handler to passive when already in passive mode");
+				}
+				self.legacy.inject_event(LegacyProtoHandlerIn::Disable);  // TODO: is this correct?
+				for (handler, _) in &mut self.out_handlers {
+					handler.inject_event(NotifsOutHandlerIn::Disable);
+				}
+				self.enabled = EnabledState::Passive;
+			},
+			NotifsHandlerIn::Close => {
+				if !matches(self.enabled, EnabledState::Passive) {
+					self.legacy.inject_event(LegacyProtoHandlerIn::Disable);  // TODO: is this correct?
+					// The notifications protocols start in the disabled state. If we were in the
+					// "Initial" state, then we shouldn't disable the notifications protocols again.
 					for (handler, _) in &mut self.out_handlers {
 						handler.inject_event(NotifsOutHandlerIn::Disable);
 					}
+					self.enabled = EnabledState::Passive;
 				}
-				self.enabled = EnabledState::Disabled;
 				for num in self.pending_in.drain(..) {
 					self.in_handlers[num].0.inject_event(NotifsInHandlerIn::Refuse);
 				}
@@ -532,6 +577,8 @@ impl ProtocolsHandler for NotifsHandler {
 
 	fn connection_keep_alive(&self) -> KeepAlive {
 		// Iterate over each handler and return the maximum value.
+
+		// TODO: have a timer in Reject mode?
 
 		let mut ret = self.legacy.connection_keep_alive();
 		if ret.is_yes() {
@@ -649,13 +696,13 @@ impl ProtocolsHandler for NotifsHandler {
 						cx.waker().wake_by_ref();
 						return Poll::Pending;
 					},
-					ProtocolsHandlerEvent::Custom(LegacyProtoHandlerOut::CustomProtocolClosed { reason, .. }) => {
+					ProtocolsHandlerEvent::Custom(LegacyProtoHandlerOut::CustomProtocolClosed { .. }) => {
 						// We consciously drop the receivers despite notifications being potentially
 						// still buffered up.
 						self.notifications_sink_rx = None;
 
 						return Poll::Ready(ProtocolsHandlerEvent::Custom(
-							NotifsHandlerOut::Closed { endpoint: self.endpoint.clone(), reason }
+							NotifsHandlerOut::SubstreamClosed { endpoint: self.endpoint.clone() }
 						))
 					},
 					ProtocolsHandlerEvent::Custom(LegacyProtoHandlerOut::CustomMessage { message }) => {
@@ -692,17 +739,17 @@ impl ProtocolsHandler for NotifsHandler {
 					ProtocolsHandlerEvent::Close(err) => void::unreachable(err),
 					ProtocolsHandlerEvent::Custom(NotifsInHandlerOut::OpenRequest(_)) =>
 						match self.enabled {
-							EnabledState::Initial => self.pending_in.push(handler_num),
-							EnabledState::Enabled => {
+							EnabledState::Passive => self.pending_in.push(handler_num),
+							EnabledState::Active => {
 								// We create `handshake_message` on a separate line to be sure
 								// that the lock is released as soon as possible.
 								let handshake_message = handshake_message.read().clone();
 								handler.inject_event(NotifsInHandlerIn::Accept(handshake_message))
 							},
-							EnabledState::Disabled =>
+							EnabledState::Reject =>
 								handler.inject_event(NotifsInHandlerIn::Refuse),
 						},
-					ProtocolsHandlerEvent::Custom(NotifsInHandlerOut::Closed) => {},
+					ProtocolsHandlerEvent::Custom(NotifsInHandlerOut::Closed) => {}, // TODO: emit CloseRequest
 					ProtocolsHandlerEvent::Custom(NotifsInHandlerOut::Notif(message)) => {
 						debug_assert!(self.pending_handshake.is_none());
 						if self.notifications_sink_rx.is_some() {
@@ -739,6 +786,7 @@ impl ProtocolsHandler for NotifsHandler {
 
 					// Nothing to do in response to other notification substreams being opened
 					// or closed.
+					// TODO: change this
 					ProtocolsHandlerEvent::Custom(NotifsOutHandlerOut::Open { .. }) => {},
 					ProtocolsHandlerEvent::Custom(NotifsOutHandlerOut::Closed) => {},
 					ProtocolsHandlerEvent::Custom(NotifsOutHandlerOut::Refused) => {},
@@ -761,7 +809,7 @@ impl ProtocolsHandler for NotifsHandler {
 				self.notifications_sink_rx = Some(stream::select(async_rx.fuse(), sync_rx.fuse()));
 
 				return Poll::Ready(ProtocolsHandlerEvent::Custom(
-					NotifsHandlerOut::Open {
+					NotifsHandlerOut::SubstreamOpen {
 						endpoint: self.endpoint.clone(),
 						received_handshake: handshake,
 						notifications_sink
