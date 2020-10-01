@@ -515,7 +515,7 @@ impl ProtocolsHandler for NotifsHandler {
 				self.enabled = EnabledState::Passive;
 			},
 			NotifsHandlerIn::Close => {
-				if !matches(self.enabled, EnabledState::Passive) {
+				if !matches!(self.enabled, EnabledState::Passive) {
 					self.legacy.inject_event(LegacyProtoHandlerIn::Disable);  // TODO: is this correct?
 					// The notifications protocols start in the disabled state. If we were in the
 					// "Initial" state, then we shouldn't disable the notifications protocols again.
