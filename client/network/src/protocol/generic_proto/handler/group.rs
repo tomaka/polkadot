@@ -47,15 +47,20 @@
 //!
 //! When it comes to the *actual* state:
 //!
-//! - In the `Open` state, there exists a bi-directional substream for that protocol.
-//! Notifications can be sent and received.
-//! - In the `Closed` state, there isn't any open substream.
+//! - In the `Open` state, there exists an outgoing substream for that protocol. Notifications can
+//! be sent and potentially be received. Can later transition to `Closed` or `CloseDesired`.
+//! - In the `Closed` state, there is no outgoing substream nor request to open one. Can later
+//! transition to `OpenDesired`, or directly to `Open` if the desired state is `ActiveConnect`.
 //! - In the `OpenDesired` state, no substream is open but the remote has emitted a handshake
 //! and would like one to be opened. If the desired state is `Passive`, one is encouraged to
-//! switch to either `ActiveConnect` or `Reject` in order to accept or reject the handshake.
+//! switch to either `ActiveConnect` or `Reject` in order to accept or reject the handshake. Can
+//! later transition to `Open` or `Closed`.
 //! - In the `CloseDesired` state, a substream is open but the remote has expressed the desire
-//! to close it.
+//! to close it. Can later transition to `Closed`.
 //!
+
+// TODO: no actual state for ActiveConnect getting rejected?
+// TODO: is Reject actually needed?
 
 use crate::protocol::generic_proto::{
 	handler::legacy::{LegacyProtoHandler, LegacyProtoHandlerProto, LegacyProtoHandlerIn, LegacyProtoHandlerOut},
@@ -214,7 +219,7 @@ pub enum NotifsHandlerIn {
 /// Event that can be emitted by a `NotifsHandler`.
 #[derive(Debug)]
 pub enum NotifsHandlerOut {
-	/// The substreams for notification protocols are open.
+	/// The outgoing substreams for notification protocols are open.
 	SubstreamOpen {
 		/// The endpoint of the connection.
 		endpoint: ConnectedPoint,
@@ -224,14 +229,14 @@ pub enum NotifsHandlerOut {
 		notifications_sink: NotificationsSink,
 	},
 
-	/// The substream for notification protocols are closed.
+	/// The outgoing substreams for notification protocols are closed.
 	SubstreamClosed {
 		/// The endpoint of the connection.
 		endpoint: ConnectedPoint,
 	},
 
 	/// The substreams for notification protocols are currently closed, but the remote has
-	/// expressed the desire for them to be open.
+	/// expressed the desire for them to be open by opening its own substream.
 	SubstreamOpenDesired {
 		/// The endpoint of the connection.
 		endpoint: ConnectedPoint,
@@ -242,6 +247,15 @@ pub enum NotifsHandlerOut {
 	SubstreamCloseDesired {
 		/// The endpoint of the connection.
 		endpoint: ConnectedPoint,
+	},
+
+	/// Received a non-gossiping message on the legacy substream.
+	CustomMessage {
+		/// Message that has been received.
+		///
+		/// Keep in mind that this can be a `ConsensusMessage` message, which then contains a
+		/// notification.
+		message: BytesMut,
 	},
 
 	/// Received a message on a notification protocol substream.
