@@ -753,7 +753,14 @@ impl ProtocolsHandler for NotifsHandler {
 					ProtocolsHandlerEvent::Close(err) => void::unreachable(err),
 					ProtocolsHandlerEvent::Custom(NotifsInHandlerOut::OpenRequest(_)) =>
 						match self.enabled {
-							EnabledState::Passive => self.pending_in.push(handler_num),
+							EnabledState::Passive => {
+								self.pending_in.push(handler_num);
+								return Poll::Ready(ProtocolsHandlerEvent::Custom(
+									NotifsHandlerOut::SubstreamOpenDesired {
+										endpoint: self.endpoint.clone(),
+									}
+								))
+							},
 							EnabledState::Active => {
 								// We create `handshake_message` on a separate line to be sure
 								// that the lock is released as soon as possible.
@@ -798,12 +805,15 @@ impl ProtocolsHandler for NotifsHandler {
 						}
 					},
 
-					// Nothing to do in response to other notification substreams being opened
-					// or closed.
-					// TODO: change this
 					ProtocolsHandlerEvent::Custom(NotifsOutHandlerOut::Open { .. }) => {},
-					ProtocolsHandlerEvent::Custom(NotifsOutHandlerOut::Closed) => {},
-					ProtocolsHandlerEvent::Custom(NotifsOutHandlerOut::Refused) => {},
+					ProtocolsHandlerEvent::Custom(NotifsOutHandlerOut::Closed) |
+					ProtocolsHandlerEvent::Custom(NotifsOutHandlerOut::Refused) => {
+						return Poll::Ready(ProtocolsHandlerEvent::Custom(
+							NotifsHandlerOut::SubstreamCloseDesired {
+								endpoint: self.endpoint.clone(),
+							}
+						))
+					},
 				}
 			}
 		}
