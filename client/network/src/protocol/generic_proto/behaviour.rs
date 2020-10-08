@@ -665,11 +665,11 @@ impl GenericProto {
 			PeerState::Disabled { open, banned_until: _ } => {
 				debug!(target: "sub-libp2p", "PSM => Connect({:?}): Enabling connections.",
 					occ_entry.key());
-				debug!(target: "sub-libp2p", "Handler({:?}) <= SetActiveConnect", occ_entry.key());
+				debug!(target: "sub-libp2p", "Handler({:?}) <= SetActive", occ_entry.key());
 				self.events.push_back(NetworkBehaviourAction::NotifyHandler {
 					peer_id: occ_entry.key().clone(),
 					handler: NotifyHandler::All,
-					event: NotifsHandlerIn::SetActiveConnect,
+					event: NotifsHandlerIn::SetActive,
 				});
 				*occ_entry.into_mut() = PeerState::Enabled { open };
 			},
@@ -684,11 +684,11 @@ impl GenericProto {
 					error!(target: "sub-libp2p", "State mismatch in libp2p: no entry in \
 						incoming for incoming peer")
 				}
-				debug!(target: "sub-libp2p", "Handler({:?}) <= SetActiveConnect", occ_entry.key());
+				debug!(target: "sub-libp2p", "Handler({:?}) <= SetActive", occ_entry.key());
 				self.events.push_back(NetworkBehaviourAction::NotifyHandler {
 					peer_id: occ_entry.key().clone(),
 					handler: NotifyHandler::All,
-					event: NotifsHandlerIn::SetActiveConnect,
+					event: NotifsHandlerIn::SetActive,
 				});
 				*occ_entry.into_mut() = PeerState::Enabled { open };
 			},
@@ -814,11 +814,11 @@ impl GenericProto {
 			PeerState::Incoming { open } => {
 				debug!(target: "sub-libp2p", "PSM => Accept({:?}, {:?}): Enabling connections.",
 					index, incoming.peer_id);
-				debug!(target: "sub-libp2p", "Handler({:?}) <= SetActiveConnect", incoming.peer_id);
+				debug!(target: "sub-libp2p", "Handler({:?}) <= SetActive", incoming.peer_id);
 				self.events.push_back(NetworkBehaviourAction::NotifyHandler {
 					peer_id: incoming.peer_id,
 					handler: NotifyHandler::All,
-					event: NotifsHandlerIn::SetActiveConnect,
+					event: NotifsHandlerIn::SetActive,
 				});
 				*state = PeerState::Enabled { open };
 			}
@@ -904,11 +904,11 @@ impl NetworkBehaviour for GenericProto {
 					peer_id, endpoint
 				);
 				*st = PeerState::Enabled { open: SmallVec::new() };
-				debug!(target: "sub-libp2p", "Handler({:?}) <= SetActiveConnect", peer_id);
+				debug!(target: "sub-libp2p", "Handler({:?}) <= SetActive", peer_id);
 				self.events.push_back(NetworkBehaviourAction::NotifyHandler {
 					peer_id: peer_id.clone(),
 					handler: NotifyHandler::One(*conn),
-					event: NotifsHandlerIn::SetActiveConnect,
+					event: NotifsHandlerIn::SetActive,
 				});
 			}
 
@@ -934,7 +934,7 @@ impl NetworkBehaviour for GenericProto {
 				self.events.push_back(NetworkBehaviourAction::NotifyHandler {
 					peer_id: peer_id.clone(),
 					handler: NotifyHandler::One(*conn),
-					event: NotifsHandlerIn::SetActiveConnect,
+					event: NotifsHandlerIn::SetActive,
 				});
 			}
 
@@ -1520,11 +1520,11 @@ impl NetworkBehaviour for GenericProto {
 				}
 
 				PeerState::DisabledPendingEnable { timer, open, .. } if *timer == delay_id => {
-					debug!(target: "sub-libp2p", "Handler({:?}) <= SetActiveConnect (ban expired)", peer_id);
+					debug!(target: "sub-libp2p", "Handler({:?}) <= SetActive (ban expired)", peer_id);
 					self.events.push_back(NetworkBehaviourAction::NotifyHandler {
 						peer_id,
 						handler: NotifyHandler::All,
-						event: NotifsHandlerIn::SetActiveConnect,
+						event: NotifsHandlerIn::SetActive,
 					});
 					*peer_state = PeerState::Enabled { open: mem::replace(open, Default::default()) };
 				}

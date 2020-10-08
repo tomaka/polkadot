@@ -25,8 +25,8 @@
 //! The state of the handler is composed of the following parts:
 //!
 //! -A handler-wide *desired* state decided by the local node by sending messages to the
-//! `ProtocolsHandler`. It consists of one of the following states: `Passive`, `ActiveConnect`,
-//! or `Reject`. See also [`NotifsHandlerIn`].
+//! `ProtocolsHandler`. It consists of one of the following states: `Passive` or `Active`.
+//! See also [`NotifsHandlerIn`].
 //!
 //! - For each individual notification protocol, its *actual* state. It consists in one of the
 //! following: `Open`, `Closed`, `OpenDesired`, or `CloseDesired`. All notification protocols are
@@ -37,30 +37,27 @@
 //!
 //! When it comes to the *desired* state:
 //!
-//! - In the `ActiveConnect` state, the handler actively tries to open with the remote one
-//! substream for each notification protocol.
+//! - In the `Active` state, the handler actively tries to open with the remote one substream for
+//! each notification protocol.
 //! - In the `Passive` state, the handler doesn't perform any pro-active action with the remote.
 //! The handler doesn't accept or refuse opening requests made by the remote but leaves them
 //! pending. This is the default mode the handler starts in.
-//! - In the `Reject` state, the handler actively tries to close any existing substream or
-//! substream request and rejects opening requests made by the remote.
 //!
 //! When it comes to the *actual* state:
 //!
 //! - In the `Open` state, there exists an outgoing substream for that protocol. Notifications can
 //! be sent and potentially be received. Can later transition to `Closed` or `CloseDesired`.
 //! - In the `Closed` state, there is no outgoing substream nor request to open one. Can later
-//! transition to `OpenDesired`, or directly to `Open` if the desired state is `ActiveConnect`.
+//! transition to `OpenDesired`, or directly to `Open` if the desired state is `Active`.
 //! - In the `OpenDesired` state, no substream is open but the remote has emitted a handshake
 //! and would like one to be opened. If the desired state is `Passive`, one is encouraged to
-//! switch to either `ActiveConnect` or `Reject` in order to accept or reject the handshake. Can
-//! later transition to `Open` or `Closed`.
+//! either switch to `Active` or send a `Close` message in order to accept or reject the
+//! handshake. Can later transition to `Open` or `Closed`.
 //! - In the `CloseDesired` state, a substream is open but the remote has expressed the desire
 //! to close it. Can later transition to `Closed`.
 //!
 
-// TODO: no actual state for ActiveConnect getting rejected?
-// TODO: is Reject actually needed?
+// TODO: no actual state for Active getting rejected?
 
 use crate::protocol::generic_proto::{
 	handler::legacy::{LegacyProtoHandler, LegacyProtoHandlerProto, LegacyProtoHandlerIn, LegacyProtoHandlerOut},
@@ -131,18 +128,13 @@ pub struct NotifsHandler {
 	legacy: LegacyProtoHandler,
 
 	/// In the situation where either the legacy substream has been opened or the handshake-bearing
-	/// notifications protocol is open, but we haven't sent out any [`NotifsHandlerOut::Open`]
-	/// event yet, this contains the received handshake waiting to be reported through the
-	/// external API.
+	/// notifications protocol is open, but we haven't sent out any
+	/// [`NotifsHandlerOut::SubstreamOpen`] event yet, this contains the received handshake
+	/// waiting to be reported through the external API.
 	pending_handshake: Option<Vec<u8>>,
 
 	/// State of this handler.
 	enabled: EnabledState,
-
-	/// If an inbound substream requests is received while in passive mode, the corresponding
-	/// index is pushed here and processed when the handler gets enabled/disabled.
-	// TODO: move to EnabledState::Passive?
-	pending_in: Vec<usize>,
 
 	/// If `Some`, contains the two `Receiver`s connected to the [`NotificationsSink`] that has
 	/// been sent out. The notifications to send out can be pulled from this receivers.
@@ -162,9 +154,12 @@ pub struct NotifsHandler {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum EnabledState {
-	Passive,
+	Passive {
+		/// If an inbound substream requests is received while in passive mode, the corresponding
+		/// index is pushed here and processed when the handler gets enabled/disabled.
+		pending_in: Vec<usize>,
+	},
 	Active,
-	Reject,
 }
 
 impl IntoProtocolsHandler for NotifsHandlerProto {
@@ -191,8 +186,9 @@ impl IntoProtocolsHandler for NotifsHandlerProto {
 			endpoint: connected_point.clone(),
 			legacy: self.legacy.into_handler(remote_peer_id, connected_point),
 			pending_handshake: None,
-			enabled: EnabledState::Passive,
-			pending_in: Vec::new(),
+			enabled: EnabledState::Passive {
+				pending_in: Vec::new(),
+			},
 			notifications_sink_rx: None,
 		}
 	}
@@ -201,15 +197,8 @@ impl IntoProtocolsHandler for NotifsHandlerProto {
 /// Event that can be received by a `NotifsHandler`.
 #[derive(Debug, Clone)]
 pub enum NotifsHandlerIn {
-	/// The handler must switch to the `ActiveConnect` state. See the module-level documentation.
-	SetActiveConnect,
-
-	/// The handler must switch to the `Reject` state. See the module-level documentation.
-	SetReject,
-
-	/// The handler must switch to the `Passive` state. Any existing substream will be preserved.
-	/// See the module-level documentation.
-	SetPassive,
+	/// The handler must switch to the `Active` state. See the module-level documentation.
+	SetActive,
 
 	/// The handler must drop any existing substream or any substream request and switch to the
 	/// `Passive` state. See the module-level documentation.
@@ -483,63 +472,50 @@ impl ProtocolsHandler for NotifsHandler {
 
 	fn inject_event(&mut self, message: NotifsHandlerIn) {
 		match message {
-			NotifsHandlerIn::SetActiveConnect => {
-				if let EnabledState::Active = self.enabled {
-					debug!("setting handler to active when already in active mode");
+			NotifsHandlerIn::SetActive => {
+				match &mut self.enabled {
+					EnabledState::Active => {
+						debug!("setting handler to active when already in active mode");
+					}
+					EnabledState::Passive { pending_in } => {
+						self.legacy.inject_event(LegacyProtoHandlerIn::Enable);
+						for (handler, initial_message) in &mut self.out_handlers {
+							// We create `initial_message` on a separate line to be sure that the lock
+							// is released as soon as possible.
+							let initial_message = initial_message.read().clone();
+							handler.inject_event(NotifsOutHandlerIn::Enable {
+								initial_message,
+							});
+						}
+						for num in pending_in.drain(..) {
+							// We create `handshake_message` on a separate line to be sure
+							// that the lock is released as soon as possible.
+							let handshake_message = self.in_handlers[num].1.read().clone();
+							self.in_handlers[num].0
+								.inject_event(NotifsInHandlerIn::Accept(handshake_message));
+						}
+						self.enabled = EnabledState::Active;
+					}
 				}
-				self.enabled = EnabledState::Active;
-				self.legacy.inject_event(LegacyProtoHandlerIn::Enable);
-				for (handler, initial_message) in &mut self.out_handlers {
-					// We create `initial_message` on a separate line to be sure that the lock
-					// is released as soon as possible.
-					let initial_message = initial_message.read().clone();
-					handler.inject_event(NotifsOutHandlerIn::Enable {
-						initial_message,
-					});
-				}
-				for num in self.pending_in.drain(..) {
-					// We create `handshake_message` on a separate line to be sure
-					// that the lock is released as soon as possible.
-					let handshake_message = self.in_handlers[num].1.read().clone();
-					self.in_handlers[num].0
-						.inject_event(NotifsInHandlerIn::Accept(handshake_message));
-				}
-			},
-			NotifsHandlerIn::SetReject => {
-				if let EnabledState::Reject = self.enabled {
-					debug!("setting handler to reject when already in reject mode");
-				}
-				self.legacy.inject_event(LegacyProtoHandlerIn::Disable);
-				for (handler, _) in &mut self.out_handlers {
-					handler.inject_event(NotifsOutHandlerIn::Disable);
-				}
-				self.enabled = EnabledState::Reject;
-				for num in self.pending_in.drain(..) {
-					self.in_handlers[num].0.inject_event(NotifsInHandlerIn::Refuse);
-				}
-			},
-			NotifsHandlerIn::SetPassive => {
-				if let EnabledState::Passive = self.enabled {
-					debug!("setting handler to passive when already in passive mode");
-				}
-				self.legacy.inject_event(LegacyProtoHandlerIn::Disable);  // TODO: is this correct?
-				for (handler, _) in &mut self.out_handlers {
-					handler.inject_event(NotifsOutHandlerIn::Disable);
-				}
-				self.enabled = EnabledState::Passive;
 			},
 			NotifsHandlerIn::Close => {
-				if !matches!(self.enabled, EnabledState::Passive) {
-					self.legacy.inject_event(LegacyProtoHandlerIn::Disable);  // TODO: is this correct?
-					// The notifications protocols start in the disabled state. If we were in the
-					// "Initial" state, then we shouldn't disable the notifications protocols again.
-					for (handler, _) in &mut self.out_handlers {
-						handler.inject_event(NotifsOutHandlerIn::Disable);
+				match &mut self.enabled {
+					EnabledState::Active => {
+						self.legacy.inject_event(LegacyProtoHandlerIn::Disable);  // TODO: is this correct?
+						// The notifications protocols start in the disabled state. If we were in the
+						// "Initial" state, then we shouldn't disable the notifications protocols again.
+						for (handler, _) in &mut self.out_handlers {
+							handler.inject_event(NotifsOutHandlerIn::Disable);
+						}
+						self.enabled = EnabledState::Passive {
+							pending_in: Vec::new(),
+						};
 					}
-					self.enabled = EnabledState::Passive;
-				}
-				for num in self.pending_in.drain(..) {
-					self.in_handlers[num].0.inject_event(NotifsInHandlerIn::Refuse);
+					EnabledState::Passive { pending_in } => {
+						for num in pending_in.drain(..) {
+							self.in_handlers[num].0.inject_event(NotifsInHandlerIn::Refuse);
+						}
+					}
 				}
 			},
 		}
@@ -591,8 +567,6 @@ impl ProtocolsHandler for NotifsHandler {
 
 	fn connection_keep_alive(&self) -> KeepAlive {
 		// Iterate over each handler and return the maximum value.
-
-		// TODO: have a timer in Reject mode?
 
 		let mut ret = self.legacy.connection_keep_alive();
 		if ret.is_yes() {
@@ -752,9 +726,9 @@ impl ProtocolsHandler for NotifsHandler {
 						error!("Incoming substream handler tried to open a substream"),
 					ProtocolsHandlerEvent::Close(err) => void::unreachable(err),
 					ProtocolsHandlerEvent::Custom(NotifsInHandlerOut::OpenRequest(_)) =>
-						match self.enabled {
-							EnabledState::Passive => {
-								self.pending_in.push(handler_num);
+						match &mut self.enabled {
+							EnabledState::Passive { pending_in } => {
+								pending_in.push(handler_num);
 								return Poll::Ready(ProtocolsHandlerEvent::Custom(
 									NotifsHandlerOut::SubstreamOpenDesired {
 										endpoint: self.endpoint.clone(),
@@ -767,8 +741,6 @@ impl ProtocolsHandler for NotifsHandler {
 								let handshake_message = handshake_message.read().clone();
 								handler.inject_event(NotifsInHandlerIn::Accept(handshake_message))
 							},
-							EnabledState::Reject =>
-								handler.inject_event(NotifsInHandlerIn::Refuse),
 						},
 					ProtocolsHandlerEvent::Custom(NotifsInHandlerOut::Closed) => {}, // TODO: emit CloseRequest
 					ProtocolsHandlerEvent::Custom(NotifsInHandlerOut::Notif(message)) => {
