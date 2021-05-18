@@ -304,6 +304,10 @@ impl Peerset {
 	}
 
 	fn on_add_reserved_peer(&mut self, set_id: SetId, peer_id: PeerId) {
+		if set_id.0 == 3 {
+			log::debug!(target: "peerset", "reserved nodes: {:?}", self.reserved_nodes[set_id.0]);
+		}
+
 		let newly_inserted = self.reserved_nodes[set_id.0].0.insert(peer_id.clone());
 		if !newly_inserted {
 			return;
@@ -314,6 +318,10 @@ impl Peerset {
 	}
 
 	fn on_remove_reserved_peer(&mut self, set_id: SetId, peer_id: PeerId) {
+		if set_id.0 == 3 {
+			log::debug!(target: "peerset", "reserved nodes: {:?}", self.reserved_nodes[set_id.0]);
+		}
+
 		if !self.reserved_nodes[set_id.0].0.remove(&peer_id) {
 			return;
 		}
@@ -337,6 +345,10 @@ impl Peerset {
 	}
 
 	fn on_set_reserved_peers(&mut self, set_id: SetId, peer_ids: HashSet<PeerId>) {
+		if set_id.0 == 3 {
+			log::debug!(target: "peerset", "reserved nodes: {:?}", self.reserved_nodes[set_id.0]);
+		}
+
 		// Determine the difference between the current group and the new list.
 		let (to_insert, to_remove) = {
 			let to_insert = peer_ids.difference(&self.reserved_nodes[set_id.0].0)
@@ -589,9 +601,14 @@ impl Peerset {
 
 		self.update_time();
 
+		if set_id.0 == 3 {
+			log::debug!(target: "peerset", "Is {} reserved: {:?}", peer_id, self.reserved_nodes[set_id.0].0.contains(&peer_id));
+		}
+
 		if self.reserved_nodes[set_id.0].1 {
 			if !self.reserved_nodes[set_id.0].0.contains(&peer_id) {
 				self.message_queue.push_back(Message::Reject(index));
+				trace!(target: "peerset", "Rejected!");
 				return;
 			}
 		}
@@ -608,12 +625,19 @@ impl Peerset {
 
 		if not_connected.reputation() < BANNED_THRESHOLD {
 			self.message_queue.push_back(Message::Reject(index));
+			trace!(target: "peerset", "Rejected!");
 			return
 		}
 
 		match not_connected.try_accept_incoming() {
-			Ok(_) => self.message_queue.push_back(Message::Accept(index)),
-			Err(_) => self.message_queue.push_back(Message::Reject(index)),
+			Ok(_) => {
+				trace!(target: "peerset", "Accepted!");
+				self.message_queue.push_back(Message::Accept(index))
+			},
+			Err(_) => {
+				trace!(target: "peerset", "Rejected!");
+				self.message_queue.push_back(Message::Reject(index))
+			},
 		}
 	}
 
