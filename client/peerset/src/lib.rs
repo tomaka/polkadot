@@ -615,7 +615,7 @@ impl Peerset {
 
 		let not_connected = match self.data.peer(set_id.0, &peer_id) {
 			// If we're already connected, don't answer, as the docs mention.
-			peersstate::Peer::Connected(_) => return,
+			peersstate::Peer::Connected(_) => { log::debug!(target: "peerset", "Ignored!"); return },
 			peersstate::Peer::NotConnected(mut entry) => {
 				entry.bump_last_connected_or_discovered();
 				entry
@@ -625,17 +625,17 @@ impl Peerset {
 
 		if not_connected.reputation() < BANNED_THRESHOLD {
 			self.message_queue.push_back(Message::Reject(index));
-			trace!(target: "peerset", "Rejected!");
+			log::debug!(target: "peerset", "Rejected!");
 			return
 		}
 
 		match not_connected.try_accept_incoming() {
 			Ok(_) => {
-				trace!(target: "peerset", "Accepted!");
+				log::debug!(target: "peerset", "Accepted!");
 				self.message_queue.push_back(Message::Accept(index))
 			},
 			Err(_) => {
-				trace!(target: "peerset", "Rejected!");
+				log::debug!(target: "peerset", "Rejected!");
 				self.message_queue.push_back(Message::Reject(index))
 			},
 		}
